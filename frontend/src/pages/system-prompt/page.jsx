@@ -3,6 +3,7 @@ import {
   Card, Button, Modal, Input, CardSkeleton, Toggle, ConfirmModal,
   ModelSelectModal, SegmentedControl,
 } from "@/shared/components";
+import { PROMPT_PRESETS, GLOBAL_TARGET, applyPreset } from "./presets";
 
 // ── Library ────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,13 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
   const isEdit = !!entry;
   const taRef = useRef(null);
 
+  const fill = (id) => {
+    const preset = applyPreset({ model, prompt }, id);
+    setModel(preset.model);
+    if (preset.prompt !== prompt) setPrompt(preset.prompt);
+    setError("");
+  };
+
   const handleSave = async () => {
     if (!label.trim()) return setError("Label is required");
     if (!model.trim()) return setError("Model is required");
@@ -138,12 +146,42 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
               >
                 Browse model
               </Button>
+              <Button
+                onClick={() => fill("wildcard")}
+                variant={model === GLOBAL_TARGET ? "primary" : "ghost"}
+                size="sm"
+                title="Apply this prompt to every model that has no entry of its own"
+              >
+                All models
+              </Button>
             </div>
+            {model === GLOBAL_TARGET && (
+              <p className="mt-1 text-[10px] text-text-muted">
+                Wildcard — applies to every model without its own entry. A
+                per-model entry still wins over this one.
+              </p>
+            )}
             {error && !model.trim() && <p className="mt-0.5 text-xs text-red-500">{error}</p>}
           </div>
 
           <div>
             <label className="mb-1.5 block text-sm font-medium">Prompt</label>
+            {!prompt.trim() && (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] text-text-muted">Start from a preset:</span>
+                {PROMPT_PRESETS.map((p) => (
+                  <Button
+                    key={p.id}
+                    onClick={() => fill(p.id)}
+                    variant="ghost"
+                    size="sm"
+                    title={p.note}
+                  >
+                    {p.name}
+                  </Button>
+                ))}
+              </div>
+            )}
             <textarea
               ref={taRef}
               value={prompt}

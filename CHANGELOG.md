@@ -61,9 +61,28 @@ found the URL. It now defaults to `true`
 
 ---
 
+## Unreleased
+
+### Presets in the system-prompt panel
+
+The panel asked for a model and a prompt, both typed from scratch — including
+the wildcard target, which meant typing `*` and hoping. `presets.js` adds four
+starting points (Unfiltered, Terse, Step by step, Builder) plus an **All
+models** button that fills the wildcard target.
+
+A preset is only a textarea default; the operator edits it freely, and nothing
+applies until the entry is saved and switched live
+(`frontend/src/pages/system-prompt/presets.js`).
+
+The prompt row is hidden once the textarea has content, so typing can never be
+overwritten by a stray click, and the **All models** button stays available —
+applying the wildcard only changes the target field, never the prompt.
+
+---
+
 ## Verification
 
-`npm run test` — **118 assertions, 8 suites, all passed**; `npm run typecheck`
+`npm run test` — **128 assertions, 9 suites, all passed**; `npm run typecheck`
 and `npm run build` exit 0; `hermes verify` OVERALL ok.
 
 | Suite | Assertions |
@@ -74,6 +93,7 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-model-skill.mjs` | 17 |
 | `test-live-prompt.mjs` | 34 |
 | `test-sysprompt-db-error.mjs` | 2 |
+| `test-sysprompt-presets.mjs` | 10 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |
 
@@ -100,9 +120,6 @@ Live, against the deployed router (`8bd6d95`):
 
 ## Known issues
 
-- **No GODMODE preset in the panel.** The operator writes the prompt by hand;
-  there is no button to fill the form and no quick way to create the wildcard
-  entry without typing `*`.
 - **The idempotency guard compares the whole block**, including the label
   (`livePrompt.js:98`). Two entries carrying the same prompt under different
   labels would both be injected. Not reachable today — a body is resolved once
