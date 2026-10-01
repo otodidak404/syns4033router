@@ -132,8 +132,6 @@ export default function LoginPage() {
             ? "Password login is not configured on this instance"
             : "Enter your dashboard password to continue"
       }
-      donateUrl={GITHUB_CONFIG.donateUrl}
-      donateQrSrc="/images/paypal-donate-qr.svg"
       password={password}
       setPassword={setPassword}
       onSignIn={handleLogin}

@@ -28,8 +28,6 @@ interface SignInPageProps {
   description?: React.ReactNode;
   heroImageSrc?: string;
   testimonials?: Testimonial[];
-  donateUrl?: string;
-  donateQrSrc?: string;
   password?: string;
   setPassword?: (val: string) => void;
   onSignIn?: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -97,8 +95,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   description = "Enter your credentials to access the dashboard",
   heroImageSrc,
   testimonials = [],
-  donateUrl,
-  donateQrSrc,
   password = "",
   setPassword,
   onSignIn,
@@ -226,27 +222,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({
       </section>
 
       {/* Right column: V3 brand showcase with a subtle donation QR */}
-      {donateUrl && donateQrSrc && (
-        <section className="hidden md:flex flex-1 items-center justify-center relative overflow-hidden bg-zinc-50 dark:bg-zinc-900">
-          <div className="absolute size-80 rounded-full bg-orange-400/10 dark:bg-orange-400/5 blur-3xl" />
-          <div className="relative flex size-[22rem] items-center justify-center rounded-[2rem] border border-zinc-200/80 dark:border-white/10 bg-white/70 dark:bg-zinc-950/50 p-8 shadow-2xl shadow-zinc-300/30 dark:shadow-black/30 backdrop-blur-xl">
-            <img
-              src="/branding/syns4033router-logo.svg"
-              alt="SYNS4033ROUTER"
-              className="size-56 object-contain"
-            />
-            <div className="absolute -bottom-4 -right-4 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-white p-2 shadow-xl">
-              <a href={donateUrl} target="_blank" rel="noopener noreferrer" aria-label="Donate via PayPal">
-                <img
-                  src={donateQrSrc}
-                  alt="PayPal donation QR code"
-                  className="size-20"
-                />
-              </a>
-            </div>
-          </div>
-        </section>
-      )}
     </div>
   );
 };

@@ -35,7 +35,6 @@ The routing engine and provider integrations remain upstream work. SYNS4033ROUTE
 | Self-hosted Material Symbols | ❌ | ❌ | ✅ |
 | API-key dialog with loading and error feedback | ❌ | ❌ | ✅ |
 | SYNS4033ROUTER branding, logo, and login experience | ❌ | ❌ | ✅ |
-| PayPal donation QR on the login page | ❌ | ❌ | ✅ |
 | Generated browser profiles excluded from Git | ❌ | ❌ | ✅ |
 
 SYNS4033ROUTER does not claim authorship of the routing engine or provider integrations. Those remain upstream work; the focus here is packaging, deployment, reliability, and per-model prompt injection.
@@ -228,13 +227,6 @@ Additional skills are available in [`skills/`](./skills/).
 
 ---
 
-## Donate
-
-If this fork helps your work, you can support it through:
-
-[PayPal — paypal.me/selaris](https://www.paypal.com/paypalme/selaris)
-
----
 
 ## License and Attribution
 
