@@ -9,6 +9,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "../../shared/constants/providers.js";
 import * as log from "../utils/logger.js";
+import { clientApiKeyRequired } from "../../lib/auth/apiKeyGate.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -29,10 +30,13 @@ export async function handleStt(request) {
   log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
 
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    const apiKey = extractApiKey(request);
-    if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    const valid = await isValidApiKey(apiKey);
+  // modelStr comes from the form here and may be absent; the gate treats a
+  // missing model as "not a known no-auth provider", so a request without one
+  // still needs a key and is rejected below for the missing model anyway.
+  const sttApiKey = extractApiKey(request);
+  if (clientApiKeyRequired({ model: modelStr, settings }).required) {
+    if (!sttApiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
+    const valid = await isValidApiKey(sttApiKey);
     if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 

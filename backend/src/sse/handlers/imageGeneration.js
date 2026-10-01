@@ -15,6 +15,7 @@ import { handleComboChat } from "open-sse/services/combo.js";
 import { saveUsageStats, buildRequestDetail } from "open-sse/handlers/chatCore/requestDetail.js";
 import { saveRequestDetail } from "../../lib/usageDb.js";
 import * as log from "../utils/logger.js";
+import { clientApiKeyRequired } from "../../lib/auth/apiKeyGate.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
@@ -39,7 +40,7 @@ export async function handleImageGeneration(request) {
 
   const apiKey = extractApiKey(request);
   const settings = await getSettings();
-  if (settings.requireApiKey) {
+  if (clientApiKeyRequired({ model: modelStr, settings }).required) {
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     const valid = await isValidApiKey(apiKey);
     if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");

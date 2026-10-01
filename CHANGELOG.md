@@ -126,6 +126,47 @@ than degrading into a misleading 401.
 5 assertions, verified by mutation — restoring the two-level path fails 2, and
 removing the `.catch` that resets the cache fails 1.
 
+### `HEAD` — Give the playground a real backend, and align the key gate
+
+**The playground was not connected to anything.** Its run handler built the
+"output" by concatenating strings locally:
+
+```
+Would inject into <model>:
+
+<prompt>
+
+--- user turn ---
+<input>
+```
+
+Nothing was sent, there was no baseline, and the result looked enough like a
+reply that a working prompt and a broken one were indistinguishable — without
+shipping the prompt to live traffic to find out. `POST /api/system-prompts/try`
+now exists and both legs go through `handleChat()`, the same entry point customer
+traffic uses, so what the operator sees is what a customer would get. The panel
+runs the prompt and, optionally, the same question with no prompt as a baseline.
+
+**Eight handlers enforced requireApiKey, written separately, and had drifted.**
+Only `chat` knew a provider with `noAuth: true` has no key for the operator to
+present; the other seven still rejected `oc/*`, so the same model was reachable
+through one endpoint and not another. `lib/auth/apiKeyGate.js` is now the single
+verdict and all eight call it — an assertion in the test suite fails if any
+handler goes back to reading `settings.requireApiKey` directly.
+
+The exemption stays narrow: an unknown prefix, a bare model name and an empty
+model all still require a key, and `requireApiKey` continues to gate every
+provider that has credentials.
+
+**The internal-call exemption is not expressible by header.** The playground
+needs to reach `handleChat()` without a client key, and the first attempt read
+`x-9r-auth-checked: 1` — which anyone who found `/v1` could have sent to walk
+straight through the gate. It is now a Symbol-keyed property on the Request
+object (`lib/auth/internalCall.js`), which an external caller has no way to set.
+Covered by an assertion that a forged header does not read as internal.
+
+14 assertions. Suite total is 160 across 12 suites.
+
 ### Earlier
 
 - `11b580f` — first-boot bootstrap generates and persists the dashboard password
@@ -138,7 +179,7 @@ removing the `.catch` that resets the cache fails 1.
 
 ## Verification
 
-`npm run test` — **146 assertions, 11 suites, all passed**; `npm run typecheck`
+`npm run test` — **160 assertions, 12 suites, all passed**; `npm run typecheck`
 and `npm run build` exit 0; `hermes verify` OVERALL ok.
 
 | Suite | Assertions |
@@ -151,6 +192,7 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-sysprompt-db-error.mjs` | 2 |
 | `test-sysprompt-presets.mjs` | 10 |
 | `test-extract-api-key.mjs` | 13 |
+| `test-api-key-gate.mjs` | 14 |
 | `test-internal-api-key.mjs` | 5 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |

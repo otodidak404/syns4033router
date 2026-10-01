@@ -31,7 +31,7 @@ import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js"
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, clientModelId, sourceFormatOverride, providerThinking }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, clientModelId, sourceFormatOverride, providerThinking, skipLivePrompt = false }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -133,7 +133,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Live system prompt (§3.8): inject the prompt bound to this model into every
   // customer request. Runs first so an operator's persona is the base that
   // skills and caveman then build on.
-  const livePrompt = await injectLiveSystemPrompt(translatedBody, finalFormat, clientModelId, model);
+  // skipLivePrompt is set only by the dashboard playground, which puts the
+  // operator's draft into the body itself; injecting the library entry as well
+  // would stack two personas into one request. Customer traffic never sets it.
+  const livePrompt = skipLivePrompt
+    ? null
+    : await injectLiveSystemPrompt(translatedBody, finalFormat, clientModelId, model);
   if (livePrompt) {
     log?.debug?.("SYSPROMPT", `${livePrompt.label} → ${livePrompt.model} | ${finalFormat}`);
   }

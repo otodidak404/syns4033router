@@ -238,6 +238,29 @@ export function getProviderAlias(providerId) {
   return provider?.alias || providerId;
 }
 
+/**
+ * Whether a model is served by a provider that needs no credentials of its own.
+ *
+ * "oc/space-bunny-free" → alias "oc" → provider "opencode" → noAuth: true.
+ * Such a provider talks to its upstream anonymously, so there is no key for the
+ * operator to present, and gating it behind requireApiKey means the model is
+ * unusable no matter what the operator configures.
+ *
+ * Only the prefix is consulted. An unrecognised prefix is not treated as
+ * free — the safer answer is to require the key.
+ */
+export function isNoAuthModel(modelStr) {
+  if (typeof modelStr !== "string") return false;
+  const slash = modelStr.indexOf("/");
+  if (slash === -1) return false;
+  const alias = modelStr.slice(0, slash);
+  if (!alias) return false;
+
+  const provider = getProviderByAlias(alias);
+  if (!provider) return false;
+  return provider.noAuth === true;
+}
+
 // Alias to ID mapping (for quick lookup)
 export const ALIAS_TO_ID = Object.values(AI_PROVIDERS).reduce((acc, p) => {
   acc[p.alias] = p.id;

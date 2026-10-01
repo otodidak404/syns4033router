@@ -19,6 +19,8 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import { clientApiKeyRequired } from "../../lib/auth/apiKeyGate.js";
+import { isInternalCall } from "../../lib/auth/internalCall.js";
 
 /**
  * Handle chat completion request
@@ -65,9 +67,14 @@ export async function handleChat(request, clientRawRequest = null) {
     log.debug("AUTH", "No API key provided (local mode)");
   }
 
-  // Enforce API key if enabled in settings
+  // The verdict comes from the shared gate so this handler cannot drift from the
+  // other seven: a provider with noAuth: true has no key for the operator to
+  // present, and every other provider still needs a valid one.
   const settings = await getSettings();
-  if (settings.requireApiKey) {
+  // Set only by an in-process call the dashboard playground marked, which has
+  // already passed the session guard. A header cannot buy this exemption.
+  const authAlreadyChecked = isInternalCall(request);
+  if (clientApiKeyRequired({ model: modelStr, settings, authAlreadyChecked }).required) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
@@ -219,6 +226,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       cavemanLevel: chatSettings.cavemanLevel || "full",
       clientModelId,
       providerThinking,
+      // Set only by the in-process playground, so a draft prompt the dashboard
+      // put into the body is not joined by the library entry as well.
+      skipLivePrompt: isInternalCall(request),
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onCredentialsRefreshed: async (newCreds) => {

@@ -239,7 +239,10 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
 function Playground({ entries, initialEntryId, onLoadAll }) {
   const [selectedId, setSelectedId] = useState(initialEntryId || (entries[0]?.id ?? ""));
   const [input, setInput] = useState("");
-  const [output, setOutput] = useState("");
+  const [message, setMessage] = useState("");
+  const [compare, setCompare] = useState(true);
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const outRef = useRef(null);
 
@@ -249,20 +252,36 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
 
   const selected = entries.find(e => e.id === selectedId) || null;
 
-  // Playground sends a prompt preview only — it never hits the gateway, so the
-  // operator can compare personas without polluting customer traffic.
-  const run = () => {
-    const text = input.trim();
-    if (!text || !selected) return;
+  // Sends the prompt to a real model over the real request path. The previous
+  // version built the "output" locally by concatenating strings, which looked
+  // like a reply but was only the prompt echoed back — there was no baseline and
+  // nothing to compare, so a working prompt and a broken one looked identical.
+  const run = async () => {
+    const msg = message.trim();
+    if (!msg || !selected) return;
     setBusy(true);
-    setOutput("");
-    // Deterministic preview: show exactly what would be injected.
-    setOutput(
-      `Would inject into ${selected.model}:\n\n` +
-      `${selected.prompt}\n\n--- user turn ---\n${text}`
-    );
-    setBusy(false);
-    outRef.current?.scrollTo?.({ top: 0 });
+    setError("");
+    setResults(null);
+    try {
+      const res = await fetch("/api/system-prompts/try", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: selected.id,
+          model: selected.model,
+          message: msg,
+          compare,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setResults(json);
+    } catch (err) {
+      setError(err.message || "Request failed");
+    } finally {
+      setBusy(false);
+      outRef.current?.scrollTo?.({ top: 0 });
+    }
   };
 
   return (
@@ -291,25 +310,53 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
 
       <div className="flex flex-col gap-2">
         <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(); }}
           rows={4}
-          placeholder="Test input… (Ctrl+Enter to run)"
+          placeholder="Ask the model something… (Ctrl+Enter to run)"
           className="w-full resize-y rounded-lg border border-border bg-surface p-3 text-sm text-text-main outline-none focus:border-primary"
         />
-        <Button onClick={run} disabled={busy || !input.trim() || !selected} icon="play_arrow">
-          Run preview
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={run} disabled={busy || !message.trim() || !selected} icon="play_arrow">
+            {busy ? "Running…" : "Run against the model"}
+          </Button>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-text-muted">
+            <input
+              type="checkbox"
+              checked={compare}
+              onChange={(e) => setCompare(e.target.checked)}
+              className="size-3.5 accent-primary"
+            />
+            Compare against baseline (same question, no prompt)
+          </label>
+        </div>
       </div>
 
-      {output && (
-        <pre
-          ref={outRef}
-          className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border-subtle bg-surface-2 p-3 font-mono text-[11px] leading-relaxed text-text-main"
-        >
-          {output}
-        </pre>
+      {error && (
+        <p className="rounded-lg border border-red-500/40 bg-red-500/10 p-2.5 text-xs text-red-400">
+          {error}
+        </p>
+      )}
+
+      {results?.results?.length > 0 && (
+        <div ref={outRef} className="flex flex-col gap-2">
+          {results.results.map((r) => (
+            <div key={r.label} className="rounded-lg border border-border-subtle bg-surface-2 p-3">
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                  {r.label}
+                </span>
+                <span className={`text-[10px] ${r.ok ? "text-green-500" : "text-red-400"}`}>
+                  {r.ok ? `${r.latencyMs ?? ""}ms` : "failed"}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-text-main">
+                {r.ok ? (r.text || "(empty reply)") : r.error}
+              </p>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
