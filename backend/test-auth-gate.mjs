@@ -12,6 +12,7 @@ import assert from "assert";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { readFile } from "fs/promises";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 process.env.DATA_DIR = process.env.DATA_DIR || "/tmp/9r-auth-gate-harness";
@@ -69,6 +70,27 @@ for (const p of ["/", "/dashboard", "/branding/logo.svg", "/favicon.ico"]) {
     assert.strictEqual(requiresAuth(p), false);
   });
 }
+
+// The first version of this file imported requiresAuth and used it while
+// server.ts kept its own inline copy — so the suite passed green against a
+// server that was still vulnerable. Assert the shipped file delegates, or the
+// same drift returns.
+await t("server.ts delegates to requiresAuth rather than repeating the gate", async () => {
+  const src = await readFile(path.join(HERE, "src/server.ts"), "utf8");
+  assert.ok(
+    /import\s*\{[^}]*\brequiresAuth\b[^}]*\}\s*from\s*["']\.\/middleware\/auth\.js["']/.test(src),
+    "server.ts does not import requiresAuth"
+  );
+  assert.ok(
+    /if\s*\(\s*requiresAuth\(\s*req\.path\s*\)\s*\)/.test(src),
+    "server.ts does not gate on requiresAuth(req.path)"
+  );
+  // No second, hand-rolled copy of the path test anywhere in the file.
+  assert.ok(
+    !/req\.path\s*===\s*["']\/api["']/.test(src),
+    "server.ts still contains an inline case-sensitive path comparison"
+  );
+});
 
 console.log("auth gate — case variants of protected paths");
 

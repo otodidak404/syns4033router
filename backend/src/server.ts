@@ -68,23 +68,14 @@ app.get("/api/health", (_req, res) => {
 // ─── Auth Middleware ───────────────────────────────────────────────────────────
 // Authentication only applies to API/proxy traffic. Applying it globally would
 // prevent the login page and SPA assets from loading when login is required.
+//
+// requiresAuth is shared with the middleware and the tests so the gate cannot
+// drift from what it protects. It must stay case-insensitive: Express matches
+// the /api and /v1 mounts case-insensitively, so /API/keys reaches the same
+// handlers as /api/keys. A case-sensitive gate here skipped authMiddleware
+// entirely for the uppercase spelling.
 app.use((req, res, next) => {
-  // Case-insensitive on purpose. Express matches the /api and /v1 mounts
-  // case-insensitively, so /API/keys reaches the same handlers as /api/keys.
-  // A case-sensitive test here skipped authMiddleware entirely for the uppercase
-  // spelling, which exposed keys, provider credentials, and stored system
-  // prompts, and let anyone PATCH /api/settings to turn login off for good.
-  const path = req.path;
-  if (
-    path === "/api" ||
-    path.startsWith("/api/") ||
-    path === "/v1" ||
-    path.startsWith("/v1/") ||
-    path === "/v1beta" ||
-    path.startsWith("/v1beta/")
-  ) {
-    return authMiddleware(req, res, next);
-  }
+  if (requiresAuth(req.path)) return authMiddleware(req, res, next);
   return next();
 });
 
