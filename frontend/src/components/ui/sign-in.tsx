@@ -221,7 +221,8 @@ export const SignInPage: React.FC<SignInPageProps> = ({
         </div>
       </section>
 
-      {/* Right column: V3 brand showcase with a subtle donation QR */}
+      {/* Sign-in form ends here. The brand showcase column was removed
+          along with the donation QR. */}
     </div>
   );
 };
