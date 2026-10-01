@@ -7,35 +7,6 @@ recorded run. Anything unproven belongs under `## Known issues`, not here.
 
 ## Fixed
 
-### `8bd6d95` — Let a system prompt reach every model, with an env fallback
-
-**Wildcard global.** A prompt bound to one model vanished the moment a request
-used another — no error, no log, just silence. `pickEntry()` now resolves in
-four layers, wildcard **last**, so a per-model entry always wins:
-`backend/open-sse/rtk/livePrompt.js:26` (`GLOBAL_TARGET = "*"`),
-`:57-61` (branch).
-
-An ambiguous bare name — two entries sharing a bare model name — now falls
-through to the wildcard instead of returning nothing. Previously
-`byBare.length === 1 ? byBare[0] : null` dropped the prompt entirely.
-
-`isValidModel()` already accepted `*`, so the API needed no change, and the
-existing one-entry-per-model guard keeps the wildcard to a single row.
-
-**Env fallback.** `resolvePromptForRequest()` no longer returns `null` when the
-lookup throws. A database error silently stripped the operator's prompt from
-every request; it now warns and falls through to `GODMODE_JB`
-(`backend/open-sse/rtk/livePrompt.js:78-81`). The library still wins whenever it
-has a matching entry.
-
-**Observability.** Three failure modes are now distinguishable instead of
-silent: no matching entry (`:94`), lookup failure (`:73`), and a body shape that
-refuses the injection (`:105`).
-
-**Idempotent injection.** `readSystemText()` only reads — it was never a dedup
-mechanism — so injecting twice appended the block twice and doubled its token
-cost. A body already carrying the exact block is now left alone (`:102`).
-
 ### `b046e8f` — Route the server's auth gate through requiresAuth
 
 **Case-sensitive auth bypass.** The outer gate compared `req.path` against
@@ -61,9 +32,42 @@ found the URL. It now defaults to `true`
 
 ---
 
-## Unreleased
+### `8bd6d95` — Let a system prompt reach every model, with an env fallback
 
-### Presets in the system-prompt panel
+**Wildcard global.** A prompt bound to one model vanished the moment a request
+used another — no error, no log, just silence. `pickEntry()` now resolves in
+four layers, wildcard **last**, so a per-model entry always wins:
+`backend/open-sse/rtk/livePrompt.js:26` (`GLOBAL_TARGET = "*"`),
+`:57-61` (branch).
+
+An ambiguous bare name — two entries sharing a bare model name — now falls
+through to the wildcard instead of returning nothing. Previously
+`byBare.length === 1 ? byBare[0] : null` dropped the prompt entirely.
+
+`isValidModel()` already accepted `*`, so the API needed no change, and the
+existing one-entry-per-model guard keeps the wildcard to a single row.
+
+**Env fallback.** `resolvePromptForRequest()` no longer returns `null` when the
+lookup throws. A database error silently stripped the operator's prompt from
+every request; it now warns and falls through to `GODMODE_JB`
+(`backend/open-sse/rtk/livePrompt.js:78-81`). The library still wins whenever it
+has a matching entry.
+
+**Observability.** Three failure modes are now distinguishable instead of
+silent: no matching entry (`:94`), lookup failure (`:74`), and a body shape that
+refuses the injection (`:105`).
+
+**Idempotent injection.** `readSystemText()` only reads — it was never a dedup
+mechanism — so injecting twice appended the block twice and doubled its token
+cost. A body already carrying the exact block is now left alone (`:102`).
+
+### `c34a87c` — This file
+
+An audit of `8bd6d95` accepted the fix but flagged the one thing that made it
+unauditable: nothing in the repository recorded what had changed, so "done" rested
+on assertions in a conversation rather than on a file anyone could check.
+
+### `81a39a7` — Presets in the system-prompt panel
 
 The panel asked for a model and a prompt, both typed from scratch — including
 the wildcard target, which meant typing `*` and hoping. `presets.js` adds four
@@ -77,6 +81,13 @@ applies until the entry is saved and switched live
 The prompt row is hidden once the textarea has content, so typing can never be
 overwritten by a stray click, and the **All models** button stays available —
 applying the wildcard only changes the target field, never the prompt.
+
+### `ebc3055` — Live check for the preset panel
+
+The preset commit shipped the code and its unit tests, but only the reducer was
+recorded as covered. Driving the deployed panel adds what unit tests cannot: the
+buttons render, clicking one fills the textarea and hides the preset row, and
+**All models** writes the wildcard target without touching the prompt.
 
 ---
 
@@ -96,7 +107,6 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-sysprompt-presets.mjs` | 10 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |
-| `test-sysprompt-presets.mjs` | 10 |
 
 The new behaviour is guarded by mutation, not just by passing tests: removing the
 wildcard branch fails 3 assertions, removing the env fallthrough fails 2, and
@@ -120,12 +130,30 @@ Live, against the deployed router (`8bd6d95`):
 | Clicking a preset fills the textarea | 632 chars, prompt row then hidden |
 | All models sets the wildcard and keeps the prompt | model field `*`, prompt intact |
 
+### Repository and deployment state
+
+Checked against GitHub and the live router, not from memory:
+
+| | |
+|---|---|
+| Repository | `otodidak404/syns4033router`, public, `fork: false`, no parent |
+| Default branch | `master`, `HEAD ebc3055`, identical to `origin` |
+| GitHub Actions | 0 workflows in the tree, 0 runs, 0 secrets |
+| Health | `{"status":"ok","version":"3.0.0"}` |
+| Auth guard | `/API/keys` → 401, `/v1` without a key → 401 |
+| Active deployment | `21:21:17Z SUCCESS` |
+| Volume | mounted at `/data`, Ready, survives a redeploy |
+| Served bundle | `index.rEM-m8JB.js` — matches the local build |
+
+Deploys are driven by `railway up` from a local clone; the service is not linked
+to GitHub, so a push does not deploy on its own.
+
 ---
 
 ## Known issues
 
 - **The idempotency guard compares the whole block**, including the label
-  (`livePrompt.js:98`). Two entries carrying the same prompt under different
+  (`livePrompt.js:102`). Two entries carrying the same prompt under different
   labels would both be injected. Not reachable today — a body is resolved once
   per request — but it is the boundary to change if a body is ever re-injected
   with a different entry.
