@@ -130,6 +130,31 @@ Live, against the deployed router (`8bd6d95`):
 | Clicking a preset fills the textarea | 632 chars, prompt row then hidden |
 | All models sets the wildcard and keeps the prompt | model field `*`, prompt intact |
 
+### Plug and play — verified from an empty clone
+
+The point of the template is that someone else can deploy it. That was checked
+end to end from a fresh `git clone`, with **no environment variables set** —
+`env -i`, only `PATH`, `HOME`, `DATA_DIR` and `PORT`:
+
+| Step | Result |
+|---|---|
+| `git clone` | 17 commits, 882 files, no `.env`, no workflows |
+| Secret scan, working tree | 0 credentials across 882 files |
+| Secret scan, full history | 0 credentials across 1329 objects |
+| `npm install` / `build` / `typecheck` / `test` | exit 0, 128 assertions |
+| First boot | database created, dashboard password generated, three secrets generated and stored |
+| Login with the generated password | succeeds; `passwordIsGenerated: true` |
+| Wildcard prompt → `/v1/chat/completions` | `PLUGPLAY-OK` returned, 179 prompt tokens |
+| Server log | `[SYSPROMPT] pnp-wildcard → * | openai` |
+
+So the operator's real path is: clone, deploy, read the password from the deploy
+log, log in, add a prompt, and it reaches the model. No variable to set, no key
+to create, nothing to configure first.
+
+The generated password is printed once and never again, and no credential from
+any of this is committed — the values above were read from the process log at
+run time and are not reproduced here.
+
 ### Repository and deployment state
 
 Checked against GitHub and the live router, not from memory:
@@ -137,13 +162,18 @@ Checked against GitHub and the live router, not from memory:
 | | |
 |---|---|
 | Repository | `otodidak404/syns4033router`, public, `fork: false`, no parent |
-| Default branch | `master`, `HEAD ebc3055`, identical to `origin` |
+| Default branch | `master`, working tree clean, identical to `origin` |
 | GitHub Actions | 0 workflows in the tree, 0 runs, 0 secrets |
 | Health | `{"status":"ok","version":"3.0.0"}` |
 | Auth guard | `/API/keys` → 401, `/v1` without a key → 401 |
 | Active deployment | `21:21:17Z SUCCESS` |
 | Volume | mounted at `/data`, Ready, survives a redeploy |
 | Served bundle | `index.rEM-m8JB.js` — matches the local build |
+
+No commit hash is recorded here on purpose: it would be stale by the next
+commit. Read it with `git log -1`, and check the two facts that actually matter
+— `git status --porcelain` empty, and `HEAD` equal to `git ls-remote origin
+master`.
 
 Deploys are driven by `railway up` from a local clone; the service is not linked
 to GitHub, so a push does not deploy on its own.
