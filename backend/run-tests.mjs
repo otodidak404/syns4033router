@@ -1,0 +1,53 @@
+// Runs every runtime suite. Suites whose modules import "@/…" aliases run
+// under the build loader; the rest need nothing special.
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const LOADER = "./bin/alias-loader.mjs";
+
+const SUITES = [
+  ["test-caveman.mjs", false],
+  ["test-skill-loader.mjs", false],
+  ["test-skill-wiring.mjs", false],
+  ["test-model-skill.mjs", false],
+  ["test-live-prompt.mjs", true],
+  ["test-skills-route.mjs", true],
+];
+
+let failed = 0;
+let total = 0;
+
+// The alias loader resolves "@/…" to dist/, so a fresh clone has nothing to
+// point at until the backend is built. Build once, up front, rather than
+// letting two suites fail with an opaque module-not-found.
+if (!fs.existsSync(path.join(HERE, "dist"))) {
+  console.log("dist/ missing — building backend first\n");
+  const build = spawnSync("npm", ["run", "build"], { cwd: HERE, encoding: "utf8", shell: true });
+  if (build.status !== 0) {
+    console.error("build failed:\n" + (build.stdout || "") + (build.stderr || ""));
+    process.exit(1);
+  }
+}
+
+for (const [file, needsLoader] of SUITES) {
+  const args = needsLoader ? ["--loader", LOADER, file] : [file];
+  const r = spawnSync(process.execPath, args, { cwd: HERE, encoding: "utf8" });
+  const out = (r.stdout || "") + (r.stderr || "");
+  const line = out.split("\n").find(l => /^\d+ passed/.test(l.trim()));
+
+  const count = line ? parseInt(line) : 0;
+  total += count;
+  if (r.status !== 0 || !line) {
+    failed++;
+    console.log(`FAIL ${file}`);
+    console.log(out.split("\n").filter(l => /FAIL|Error/.test(l)).slice(0, 6).map(l => "     " + l).join("\n"));
+  } else {
+    console.log(`  ok  ${file.padEnd(26)} ${count} passed`);
+  }
+}
+
+console.log(`\n${total} assertions${failed ? ` — ${failed} suite(s) failed` : " — all suites passed"}`);
+process.exit(failed ? 1 : 0);

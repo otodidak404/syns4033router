@@ -1,0 +1,81 @@
+# SYNS4033ROUTER Changelog
+
+All notable changes to the **SYNS4033ROUTER** platform will be documented here.
+
+---
+
+## [v3.0.0] - 2026-07-06
+
+### Changed
+
+- Rebranded the product and dashboard as **SYNS4033ROUTER by codestorm**.
+- Added a custom transparent V3 logo and favicon.
+- Rebuilt the README with an attributed comparison of original SYNS4033ROUTER, V2, and V3.
+- Reworked the login donation QR into a smaller framed showcase.
+- Renamed default local runtime directories and Linux deployment examples to `9router-v3`.
+- Removed the legacy screenshot directory and its README references.
+
+### Railway
+
+- Retained the single-service multi-stage Docker deployment.
+- Uses `/data` through a Railway Volume without a Docker `VOLUME` instruction.
+- Uses Railway-provided public-domain information for OIDC URLs.
+
+---
+
+## [v0.6.0] - 2026-07-06
+
+### Added
+- **Usage API — Complete Provider Coverage**: Fully implemented usage/quota fetching for all supported providers:
+  - **GitHub Copilot**: Real quota snapshots (paid plan: chat/completions/premium; free plan: monthly limits + reset date)
+  - **Gemini CLI**: Per-model quota buckets via `cloudcode-pa.googleapis.com` with remaining fraction + reset time
+  - **Antigravity**: Model-level quota from `fetchAvailableModels` with subscription tier info
+  - **Claude**: OAuth usage endpoint (5h session + 7d weekly windows) with legacy org fallback
+  - **Codex (OpenAI)**: `chatgpt.com/backend-api/wham/usage` session + weekly rate limit windows
+  - **Kiro (AWS)**: `codewhisperer.us-east-1.amazonaws.com/getUsageLimits` multi-endpoint fallback
+  - **Qoder**: `openapi.qoder.sh/api/v2/quota/usage` with expiry parsing
+  - **GLM / GLM-CN**: `bigmodel.cn/api/monitor/usage/quota/limit` per-region with plan level
+  - **MiniMax / MiniMax-CN**: `coding_plan/remains` multi-URL fallback + M-series percent-only buckets
+  - **CodeBuddy**: `billing/ide/usage` with local DB fallback for `ck_` API keys (Tencent restriction)
+  - **Kimi Coding**: User profile endpoint for connection status
+  - **Cloudflare Workers AI**: `api.cloudflare.com/accounts/{id}/ai/usage` neurons + requests
+  - **Cursor**: `api2.cursor.sh/auth/stripe` membership type + expiry info
+  - **KiloCode**: `api.kilo.ai/api/user/profile` plan + credits
+  - **Cline**: `api.cline.bot/api/v1/auth/me` plan + credits
+
+- **Skills Page Improvements**:
+  - Skills now point to `ahwanulm/9router-v2` repo (previously `decolua/9router`)
+  - Added `using-superpowers` and `multi-brain` agent skills
+  - Page redesigned with 3 sections: Entry Point / API Capabilities / Agent Workflow
+  - Quick Start card with copy-prompt button
+
+- **Agent Instructions** (`.agents/AGENTS.md`): Workspace rule requiring changelog updates after every significant change
+
+### Changed
+- **Donate link**: Changed from modal to direct external link → `https://mayar.to/ahwanulm`
+- **Language picker removed**: Dashboard now defaults to English; language selection UI removed from header and profile page
+- **Changelog**: Now served from local `/CHANGELOG.md` static file, no longer fetched from upstream 9router repo
+
+### Removed
+- **Weavy AI provider**: Removed from `WEB_COOKIE_PROVIDERS` — automation scripts deleted
+- **Weavy AI usage**: Removed from `USAGE_SUPPORTED_PROVIDERS`
+- **Leonardo AI usage**: Removed from `USAGE_SUPPORTED_PROVIDERS` (provider kept as deprecated)
+- **Cookie Pool tab**: Removed from Automation page
+
+---
+
+## [v0.5.0] - 2026-07-04
+
+### Added
+- **OIDC Authentication Support**: Added full support for OpenID Connect (Single Sign-On) and custom OIDC callback workflows.
+- **Brand New Sign-in Experience**: A premium, highly aesthetic dark-mode login interface with dynamic card effects, user reviews, and instant authentication options.
+- **Cloudflare Workers AI Automation**:
+  - Fully automated credentials flow using turnstile resolver (Playwright & 2Captcha).
+  - Automatically fetches the API keys and Account ID, configuring the connection to 9router instantly.
+  - Integrates seamlessly with the **Ammail** temporary mail API to handle real-time verification codes.
+- **Embedded API Documentation**: Included local static reference docs for image and video APIs.
+
+### Changed
+- **Streamlined Dashboard**: Removed Leonardo AI, Weavy AI, Kimi, Qoder, and Cookie Pool tabs to focus entirely on Cloudflare Workers AI automation.
+- **Improved Log View**: Fixed log directory creation and redirected auth logout flows to prevent infinity page routing loops.
+- **Portability**: Transitioned backend configuration to run portably on all desktop and server environments.

@@ -1,0 +1,24 @@
+{
+  "name": "9router-v3",
+  "private": true,
+  "version": "3.0.0",
+  "description": "SYNS4033ROUTER by codestorm — self-hosted AI gateway monorepo",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "backend/open-sse"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=9router-backend\" \"npm run dev --workspace=9router-frontend\"",
+    "build": "npm run build --workspace=9router-backend && npm run build --workspace=9router-frontend",
+    "test": "npm run test --workspace=9router-backend",
+    "backend": "npm run dev --workspace=9router-backend",
+    "frontend": "npm run dev --workspace=9router-frontend",
+    "start": "npm run start --workspace=9router-backend",
+    "heroku-postbuild": "npm run build",
+    "typecheck": "npm run typecheck --workspace=9router-backend && npm run typecheck --workspace=9router-frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

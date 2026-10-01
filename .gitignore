@@ -1,0 +1,38 @@
+node_modules/
+.agents/
+.codex/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tsbuildinfo
+dist/
+build/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js / framework specifics if any
+.next/
+out/
+
+# Hermes agent verification manifest (local tooling state)
+.hermes/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Database files — must never be committed
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime generated directories
+backend/profiles/
+backend/canva_debug/
+backend/src/automation/profiles/
+har/
