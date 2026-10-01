@@ -16,10 +16,26 @@ const entry = (model, label, isActive = true, isLive = true, prompt = `P:${label
   ({ model, label, prompt, isActive, isLive });
 
 let pass = 0;
+const pending = [];
+
 const t = (name, fn) => {
+  if (fn.constructor.name === "AsyncFunction") {
+    // Defer, don't fire. These tests mutate process.env, so running them
+    // concurrently lets one test's cleanup land in the middle of another — the
+    // env prompt then leaks or vanishes depending on timing.
+    pending.push({ name, fn });
+    return;
+  }
   try { fn(); console.log(`  ok  ${name}`); pass++; }
   catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); process.exitCode = 1; }
 };
+
+async function drain() {
+  for (const { name, fn } of pending) {
+    try { await fn(); console.log(`  ok  ${name}`); pass++; }
+    catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); process.exitCode = 1; }
+  }
+}
 
 const sys = body => body.messages.filter(m => m.role === "system").map(m => m.content).join("\n");
 
@@ -145,4 +161,100 @@ t("body with no recognizable slot reports no placement", () => {
   assert.strictEqual(injectSystemText({ foo: 1 }, FORMATS.OPENAI, "X"), false);
 });
 
+
+// ---- wildcard + env fallback -------------------------------------------------
+// The operator's prompt has to reach every model, including ones added after
+// the entry was written, so "*" applies to any model without its own entry.
+
+t("wildcard applies to a model with no entry of its own", () => {
+  const e = pickEntry([{ model: "*", label: "G", isActive: true, isLive: true, prompt: "P" }], "gr/nusa-9", null);
+  assert.strictEqual(e.label, "G");
+});
+
+t("an exact entry still wins over the wildcard", () => {
+  const entries = [
+    { model: "cc/claude-opus-4-8", label: "SPECIFIC", isActive: true, isLive: true },
+    { model: "*", label: "GLOBAL", isActive: true, isLive: true },
+  ];
+  assert.strictEqual(pickEntry(entries, "cc/claude-opus-4-8", null).label, "SPECIFIC");
+});
+
+t("a bare-name entry still wins over the wildcard", () => {
+  const entries = [
+    { model: "claude-opus-4-8", label: "BARE", isActive: true, isLive: true },
+    { model: "*", label: "GLOBAL", isActive: true, isLive: true },
+  ];
+  assert.strictEqual(pickEntry(entries, "cc/claude-opus-4-8", null).label, "BARE");
+});
+
+t("an ambiguous bare name falls through to the wildcard, not to nothing", () => {
+  const entries = [
+    { model: "a/claude-x", label: "A", isActive: true, isLive: true },
+    { model: "b/claude-x", label: "B", isActive: true, isLive: true },
+    { model: "*", label: "GLOBAL", isActive: true, isLive: true },
+  ];
+  assert.strictEqual(pickEntry(entries, "c/claude-x", null).label, "GLOBAL");
+});
+
+t("an inactive wildcard is ignored", () => {
+  const e = pickEntry([{ model: "*", label: "G", isActive: false, isLive: true }], "gr/nusa-9", null);
+  assert.strictEqual(e, null);
+});
+
+t("a wildcard that is not live is ignored", () => {
+  const e = pickEntry([{ model: "*", label: "G", isActive: true, isLive: false }], "gr/nusa-9", null);
+  assert.strictEqual(e, null);
+});
+
+t("no wildcard and no match stays null", () => {
+  assert.strictEqual(pickEntry([{ model: "cc/opus", isActive: true, isLive: true }], "gr/nusa-9", null), null);
+});
+
+t("an empty library stays null", () => {
+  assert.strictEqual(pickEntry([], "cc/claude-opus-4-8", null), null);
+});
+
+t("the prompt follows the operator across three different models", () => {
+  const entries = [{ model: "*", label: "GLOBAL", isActive: true, isLive: true, prompt: "P" }];
+  for (const m of ["cc/claude-opus-4-8", "cc/claude-sonnet-4-6", "openai/gpt-5"]) {
+    assert.strictEqual(pickEntry(entries, m, null).prompt, "P", m);
+  }
+});
+
+t("the wildcard block lands in the system slot exactly once", async () => {
+  process.env.GODMODE_JB = "ENV-RIDER";
+  try {
+    const { injectLiveSystemPrompt } = await import(path.join(RTK, "livePrompt.js"));
+    const body = { messages: [{ role: "user", content: "hi" }] };
+    await injectLiveSystemPrompt(body, FORMATS.OPENAI, "gr/nusa-9", null);
+    // a second pass over the same body must not double up
+    await injectLiveSystemPrompt(body, FORMATS.OPENAI, "gr/nusa-9", null);
+    const sys = body.messages[0].content;
+    const n = sys.split("ENV-RIDER").length - 1;
+    assert.ok(n >= 1, "the env prompt reached the system slot");
+    assert.strictEqual((body.messages[0].content.match(/--- SYSTEM PROMPT:/g) || []).length, 1);
+  } finally {
+    delete process.env.GODMODE_JB;
+  }
+});
+
+t("no library entry and no env resolves to null", async () => {
+  delete process.env.GODMODE_JB;
+  const { resolvePromptForRequest } = await import(path.join(RTK, "livePrompt.js"));
+  assert.strictEqual(await resolvePromptForRequest("gr/nusa-9", null), null);
+});
+
+t("the env prompt is used when the library has nothing for this model", async () => {
+  process.env.GODMODE_JB = "ENV-RIDER";
+  try {
+    const { resolvePromptForRequest } = await import(path.join(RTK, "livePrompt.js"));
+    const e = await resolvePromptForRequest("gr/nusa-9", null);
+    assert.strictEqual(e.prompt, "ENV-RIDER");
+    assert.strictEqual(e.model, "*");
+  } finally {
+    delete process.env.GODMODE_JB;
+  }
+});
+
+await drain();
 console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);

@@ -14,6 +14,7 @@ const SUITES = [
   ["test-skill-wiring.mjs", false],
   ["test-model-skill.mjs", false],
   ["test-live-prompt.mjs", true],
+  ["test-sysprompt-db-error.mjs", true],
   ["test-skills-route.mjs", true],
   ["test-auth-gate.mjs", true],
 ];
