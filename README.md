@@ -181,17 +181,37 @@ Heroku injects `PORT` automatically.
 
 ### Deploy to Railway
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fotodidak404%2Fsyns4033router)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/new)
 
-**OR**
+There is no one-click link for a self-hosted repo, so this takes a few steps.
 
-1. Create a service from this repository.
-2. Copy variables from `backend/.env.example` into the **Variables** tab.
-3. Add a Railway PostgreSQL service and expose its `DATABASE_URL` to SYNS4033ROUTER, or attach a Railway Volume at `/data` to keep using SQLite.
-4. Generate a public domain under **Settings → Networking**.
+1. Open [railway.com/new](https://railway.com/new) and choose **New Project →
+   Deploy from GitHub Repo**. If your repository does not appear, install the
+   Railway GitHub App first and grant it access to this repository.
+2. Select `otodidak404/syns4033router`. Railway reads `railway.toml`, builds the
+   included Dockerfile, and supplies `PORT`, `RAILWAY_PUBLIC_DOMAIN`, and
+   `RAILWAY_PRIVATE_DOMAIN` on its own.
+3. Set the four variables the app cannot start without, in the service's
+   **Variables** tab. Generate each secret yourself — do not copy a value from
+   anywhere:
 
-Railway builds the included Dockerfile. It supplies `RAILWAY_PUBLIC_DOMAIN`, `RAILWAY_PRIVATE_DOMAIN`, and `PORT` automatically. The Dockerfile intentionally omits the unsupported Docker `VOLUME` instruction.
+   | Variable | What to put |
+   |---|---|
+   | `INITIAL_PASSWORD` | the dashboard password for your first login |
+   | `JWT_SECRET` | any long random string |
+   | `API_KEY_SECRET` | any long random string |
+   | `MACHINE_ID_SALT` | any long random string |
 
+   Without `INITIAL_PASSWORD` the login page returns `503` and tells you so.
+   After the first login you can change the password under **Settings**.
+4. Optional but recommended for anything long-lived: attach a Volume mounted at
+   `/data` to keep the SQLite database across deploys, or add a PostgreSQL
+   service and point `DATABASE_URL` at it. With neither, the database resets on
+   every deploy.
+5. Generate a public domain under **Settings → Networking**.
+
+Everything else in `backend/.env.example` is optional and has a working
+default.
 ### Switching Between SQLite and PostgreSQL
 
 - Without `DATABASE_URL`, SYNS4033ROUTER uses SQLite at `DATA_DIR/db/data.sqlite`.
