@@ -188,27 +188,41 @@ There is no one-click link for a self-hosted repo, so this takes a few steps.
 1. Open [railway.com/new](https://railway.com/new) and choose **New Project →
    Deploy from GitHub Repo**. If your repository does not appear, install the
    Railway GitHub App first and grant it access to this repository.
-2. Select `otodidak404/syns4033router`. Railway reads `railway.toml`, builds the
-   included Dockerfile, and supplies `PORT`, `RAILWAY_PUBLIC_DOMAIN`, and
-   `RAILWAY_PRIVATE_DOMAIN` on its own.
-3. Set the four variables the app cannot start without, in the service's
-   **Variables** tab. Generate each secret yourself — do not copy a value from
-   anywhere:
+2. Select `otodidak404/syns4033router`. Railway reads `railway.toml`, builds
+   the included Dockerfile, and supplies `PORT`, `RAILWAY_PUBLIC_DOMAIN`, and
+   `RAILWAY_PRIVATE_DOMAIN` on its own. **No variables are required.**
 
-   | Variable | What to put |
-   |---|---|
-   | `INITIAL_PASSWORD` | the dashboard password for your first login |
-   | `JWT_SECRET` | any long random string |
-   | `API_KEY_SECRET` | any long random string |
-   | `MACHINE_ID_SALT` | any long random string |
+On first boot the gateway generates everything it needs. Your dashboard
+password, the JWT signing secret, the API-key hashing secret, and the machine-id
+salt are all created, stored in the database, and the password is printed once
+to the deployment log:
 
-   Without `INITIAL_PASSWORD` the login page returns `503` and tells you so.
-   After the first login you can change the password under **Settings**.
-4. Optional but recommended for anything long-lived: attach a Volume mounted at
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Dashboard password was not configured, so one was generated.  │
+│                                                                │
+│      password:  tiXkZgSKcCa8RwRabnPC                           │
+│                                                                │
+│  Open the dashboard and log in with it, then change it under   │
+│  Settings. This is printed once and never again.               │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Open **Logs** in Railway, copy that password, sign in, and change it under
+**Settings**. The password is random rather than a fixed default on purpose: a
+known default would give an authenticated instance to anyone who found the URL
+first.
+
+If you would rather manage these yourself, set `INITIAL_PASSWORD`,
+`JWT_SECRET`, `API_KEY_SECRET`, and `MACHINE_ID_SALT` in the service's
+**Variables** tab. Anything you set takes precedence and nothing is generated
+for it.
+
+3. Optional but recommended for anything long-lived: attach a Volume mounted at
    `/data` to keep the SQLite database across deploys, or add a PostgreSQL
-   service and point `DATABASE_URL` at it. With neither, the database resets on
-   every deploy.
-5. Generate a public domain under **Settings → Networking**.
+   service and point `DATABASE_URL` at it. With neither, the database — and
+   therefore the generated password — resets on every deploy.
+4. Generate a public domain under **Settings → Networking**.
 
 Everything else in `backend/.env.example` is optional and has a working
 default.
