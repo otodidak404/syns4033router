@@ -22,6 +22,9 @@ export async function GET(req, res) {
       oidcConfigured: isOidcConfigured(settings),
       oidcLoginLabel: (settings.oidcLoginLabel || "Sign in with OIDC").trim() || "Sign in with OIDC",
       hasPassword: !!settings.password,
+      // True until the operator replaces the auto-generated credential, so the
+      // login page can keep pointing them at the deployment log.
+      passwordIsGenerated: !!settings.passwordIsGenerated,
       initialPasswordConfigured,
       passwordConfigured: !!settings.password || initialPasswordConfigured,
       displayName,

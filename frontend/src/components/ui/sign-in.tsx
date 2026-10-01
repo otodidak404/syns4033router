@@ -47,6 +47,7 @@ interface SignInPageProps {
   hasPassword?: boolean;
   initialPasswordConfigured?: boolean;
   passwordConfigured?: boolean;
+  passwordIsGenerated?: boolean;
 }
 
 // --- SUB-COMPONENTS ---
@@ -114,6 +115,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   hasPassword = true,
   initialPasswordConfigured = false,
   passwordConfigured = true,
+  passwordIsGenerated = false,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -181,6 +183,16 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                   {loading ? "Logging in..." : retryAfter > 0 ? `Wait ${retryAfter}s` : !passwordConfigured ? "Password not configured" : "Login"}
                 </button>
 
+                {passwordIsGenerated && (
+                  <div className="animate-element animate-delay-650 text-center">
+                    <p className="text-xs text-zinc-500 italic">
+                      First boot generated a password and printed it once to the
+                      deployment log. Copy it from there, then change it under
+                      Settings.
+                    </p>
+                  </div>
+                )}
+
                 {(hasPassword === false || !passwordConfigured) && (
                   <div className="animate-element animate-delay-650 text-center space-y-1.5">
                     {initialPasswordConfigured && (
@@ -188,9 +200,11 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                         Use the initial password configured through <code className="bg-zinc-100 dark:bg-zinc-850 px-1 rounded font-mono">INITIAL_PASSWORD</code>.
                       </p>
                     )}
-                    {!passwordConfigured && (
+                    {!initialPasswordConfigured && !passwordConfigured && (
                       <p className="text-xs text-zinc-500 italic">
-                        Set <code className="bg-zinc-100 dark:bg-zinc-850 px-1 rounded font-mono">INITIAL_PASSWORD</code> on the host, then restart the service.
+                        No password was set, so one was generated at first boot and
+                        printed once to the deployment log. Copy it from there, then
+                        change it under Settings after logging in.
                       </p>
                     )}
                   </div>

@@ -7,6 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { authMiddleware } from "./middleware/auth.js";
 import { buildAutoRouter } from "./autoRouter.js";
+import { runFirstRunBootstrap } from "./lib/bootstrap/firstRun.js";
+import { getSettings, updateSettings } from "./lib/localDb.js";
 
 // Load backend/.env before anything reads process.env. Platform deploys inject
 // real env vars and Node applies those on top, so an explicit value there still
@@ -82,6 +84,14 @@ app.use((req, res, next) => {
 
 // ─── Auto-mount all routes ────────────────────────────────────────────────────
 async function start() {
+  // Before anything reads a secret, so the first request never sees a half
+  // configured process.
+  try {
+    await runFirstRunBootstrap({ getSettings, updateSettings });
+  } catch (err) {
+    console.error("[bootstrap] failed to auto-configure:", err);
+  }
+
   const apiRouter = await buildAutoRouter();
   app.use("/api", (req, res, next) => {
     console.log("API request:", req.method, req.url, req.originalUrl);

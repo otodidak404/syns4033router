@@ -60,6 +60,9 @@ export async function PATCH_handler(req, res) {
 
       const salt = await bcrypt.genSalt(10);
       body.password = await bcrypt.hash(body.newPassword, salt);
+      // The operator has replaced whatever the first run produced, so stop
+      // pointing the login page at the deployment log.
+      body.passwordIsGenerated = false;
       delete body.newPassword;
       delete body.currentPassword;
     }

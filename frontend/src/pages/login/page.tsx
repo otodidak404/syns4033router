@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [hasPassword, setHasPassword] = useState<boolean | null>(null);
   const [initialPasswordConfigured, setInitialPasswordConfigured] = useState(false);
   const [passwordConfigured, setPasswordConfigured] = useState(true);
+  const [passwordIsGenerated, setPasswordIsGenerated] = useState(false);
   const [authMode, setAuthMode] = useState("password");
   const [oidcConfigured, setOidcConfigured] = useState(false);
   const [oidcLoginLabel, setOidcLoginLabel] = useState("Sign in with OIDC");
@@ -52,6 +53,7 @@ export default function LoginPage() {
           setHasPassword(!!data.hasPassword);
           setInitialPasswordConfigured(data.initialPasswordConfigured === true);
           setPasswordConfigured(data.passwordConfigured !== false);
+          setPasswordIsGenerated(data.passwordIsGenerated === true);
           setAuthMode(data.authMode || "password");
           setOidcConfigured(data.oidcConfigured === true);
           setOidcLoginLabel(data.oidcLoginLabel || "Sign in with OIDC");
@@ -148,6 +150,7 @@ export default function LoginPage() {
       hasPassword={hasPassword}
       initialPasswordConfigured={initialPasswordConfigured}
       passwordConfigured={passwordConfigured}
+      passwordIsGenerated={passwordIsGenerated}
     />
   );
 }
