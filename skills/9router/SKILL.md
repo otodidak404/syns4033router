@@ -46,15 +46,15 @@ When the user needs a specific capability, fetch that skill's `SKILL.md` from it
 
 | Capability | Raw URL |
 |---|---|
-| Chat / code-gen | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-chat/SKILL.md |
-| Image generation | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-image/SKILL.md |
-| Text-to-speech | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-tts/SKILL.md |
-| Speech-to-text | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-stt/SKILL.md |
-| Embeddings | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-embeddings/SKILL.md |
-| Web search | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-web-search/SKILL.md |
-| Web fetch (URL → markdown) | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-web-fetch/SKILL.md |
-| Using superpowers (discipline) | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/using-superpowers/SKILL.md |
-| Multi-brain (shared memory) | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/multi-brain/SKILL.md |
+| Chat / code-gen | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-chat/SKILL.md |
+| Image generation | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-image/SKILL.md |
+| Text-to-speech | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-tts/SKILL.md |
+| Speech-to-text | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-stt/SKILL.md |
+| Embeddings | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-embeddings/SKILL.md |
+| Web search | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-web-search/SKILL.md |
+| Web fetch (URL → markdown) | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-web-fetch/SKILL.md |
+| Using superpowers (discipline) | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/using-superpowers/SKILL.md |
+| Multi-brain (shared memory) | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/multi-brain/SKILL.md |
 
 ## Errors
 

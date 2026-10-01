@@ -25,7 +25,7 @@ Using a dedicated disk keeps browser automation data and the SQLite database awa
 
 ```bash
 cd /mnt/hdd
-git clone https://github.com/codestorm-official/9router-v2.git 9router-v3
+git clone https://github.com/otodidak404/syns4033router.git syns4033router
 cd 9router-v3
 npm install
 ```

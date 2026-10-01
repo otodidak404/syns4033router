@@ -5,7 +5,7 @@ description: Text-to-speech via SYNS4033ROUTER /v1/audio/speech using OpenAI / E
 
 # SYNS4033ROUTER — Text-to-Speech
 
-Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router/SKILL.md for setup.
+Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router/SKILL.md for setup.
 
 ## Discover
 

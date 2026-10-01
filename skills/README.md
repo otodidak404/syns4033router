@@ -8,23 +8,23 @@ Drop-in skills for any AI agent (Claude, Cursor, ChatGPT, custom SDK). Just **co
 
 | Capability | Copy link below and paste to your AI |
 |---|---|
-| **Entry / Setup** (start here) | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router/SKILL.md |
-| Chat / code-gen | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-chat/SKILL.md |
-| Image generation | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-image/SKILL.md |
-| Text-to-speech | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-tts/SKILL.md |
-| Speech-to-text | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-stt/SKILL.md |
-| Embeddings | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-embeddings/SKILL.md |
-| Web search | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-web-search/SKILL.md |
-| Web fetch (URL → markdown) | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router-web-fetch/SKILL.md |
-| Using superpowers (discipline) | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/using-superpowers/SKILL.md |
-| Multi-brain (shared memory) | https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/multi-brain/SKILL.md |
+| **Entry / Setup** (start here) | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router/SKILL.md |
+| Chat / code-gen | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-chat/SKILL.md |
+| Image generation | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-image/SKILL.md |
+| Text-to-speech | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-tts/SKILL.md |
+| Speech-to-text | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-stt/SKILL.md |
+| Embeddings | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-embeddings/SKILL.md |
+| Web search | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-web-search/SKILL.md |
+| Web fetch (URL → markdown) | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router-web-fetch/SKILL.md |
+| Using superpowers (discipline) | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/using-superpowers/SKILL.md |
+| Multi-brain (shared memory) | https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/multi-brain/SKILL.md |
 
 ## How to use
 
 Paste to your AI (Claude, Cursor, ChatGPT, …):
 
 ```
-Read this skill and use it: https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router/SKILL.md
+Read this skill and use it: https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router/SKILL.md
 ```
 
 Then ask normally — *"generate an image of a cat"*, *"transcribe this URL"*, etc.

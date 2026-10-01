@@ -5,7 +5,7 @@ description: Web search via SYNS4033ROUTER /v1/search using Tavily / Exa / Brave
 
 # SYNS4033ROUTER — Web Search
 
-Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/codestorm-official/9router-v2/refs/heads/master/skills/9router/SKILL.md for setup.
+Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/otodidak404/syns4033router/refs/heads/master/skills/9router/SKILL.md for setup.
 
 ## Discover
 
