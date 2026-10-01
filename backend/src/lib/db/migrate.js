@@ -7,6 +7,7 @@ import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
 import { makeBackupDir, backupFile, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
+import { hashApiKey } from "./repos/apiKeysRepo.js";
 
 // Marker file: prevents re-importing legacy JSON when user wipes data.sqlite.
 const MIGRATED_MARKER = path.join(DB_DIR, ".migrated-from-json");
@@ -140,10 +141,14 @@ function importLegacyMain(adapter, data) {
     );
   }, (p) => ({ id: p.id ?? null }));
 
+  // Imported JSON predates hashing and holds plaintext. Hash on the way in, or
+  // validateApiKey() will never find the row and the key returns 401 forever.
+  // Already-hashed values are passed through so re-importing is idempotent.
   importWithAssertion(adapter, "apiKeys", data.apiKeys || [], (k) => {
+    const alreadyHashed = typeof k.key === "string" && /^[0-9a-f]{64}$/.test(k.key);
     adapter.run(
       `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
-      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString()]
+      [k.id, alreadyHashed ? k.key : hashApiKey(k.key), k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString()]
     );
   }, (k) => ({ id: k.id ?? null, name: k.name ?? null }));
 

@@ -167,6 +167,36 @@ Covered by an assertion that a forged header does not read as internal.
 
 14 assertions. Suite total is 160 across 12 suites.
 
+### `HEAD` — Rescue API keys that died when hashing landed
+
+Keys were stored in the clear before bca7ab6 and hashed after it.
+`validateApiKey()` has only ever looked a key up by `sha256(salt:key)`, so a row
+still holding plaintext stopped matching at the moment hashing landed. Every key
+the operator already had began answering 401, while the dashboard kept working —
+which is what makes the symptom confusing, because the dashboard authenticates
+on a session cookie rather than an API key.
+
+Reproduced before fixing:
+
+| Stored as | Found by validateApiKey | Result |
+|---|---|---|
+| plaintext `sk-legacy-…` | `sha256(salt:sk-legacy-…)` | **401** |
+| `sha256(salt:sk-…)` | `sha256(salt:sk-…)` | 200 |
+
+Migration `003-rehash-plaintext-api-keys` converts the plaintext rows at startup.
+It imports `hashApiKey` rather than copying the salt — a second copy would
+produce different digests and turn the migration into a no-op that looks like it
+ran. A stored value that is already 64 hex characters is a digest and is left
+alone, so running it twice changes nothing.
+
+The legacy JSON import path had the same flaw: it inserted `k.key` as issued, so
+a re-import would reintroduce plaintext and undo the migration. It now hashes on
+the way in and passes already-hashed values through.
+
+12 assertions, driven through a real database: the key is rejected before the
+migration, accepted after, still accepted after a second run, and a key that was
+never issued is still refused. Suite total is 172 across 13 suites.
+
 ### Earlier
 
 - `11b580f` — first-boot bootstrap generates and persists the dashboard password
@@ -179,7 +209,7 @@ Covered by an assertion that a forged header does not read as internal.
 
 ## Verification
 
-`npm run test` — **160 assertions, 12 suites, all passed**; `npm run typecheck`
+`npm run test` — **172 assertions, 13 suites, all passed**; `npm run typecheck`
 and `npm run build` exit 0; `hermes verify` OVERALL ok.
 
 | Suite | Assertions |
@@ -193,6 +223,7 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-sysprompt-presets.mjs` | 10 |
 | `test-extract-api-key.mjs` | 13 |
 | `test-api-key-gate.mjs` | 14 |
+| `test-api-key-rehash.mjs` | 12 |
 | `test-internal-api-key.mjs` | 5 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |

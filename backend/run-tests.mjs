@@ -18,6 +18,7 @@ const SUITES = [
   ["test-sysprompt-presets.mjs", false],
   ["test-extract-api-key.mjs", true],
   ["test-api-key-gate.mjs", true],
+  ["test-api-key-rehash.mjs", true],
   ["test-internal-api-key.mjs", true],
   ["test-skills-route.mjs", true],
   ["test-auth-gate.mjs", true],
