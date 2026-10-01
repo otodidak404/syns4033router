@@ -304,8 +304,12 @@ export async function clearAccountError(connectionId, currentConnection, model =
 export function extractApiKey(request) {
   // Check Authorization header first
   const authHeader = request.headers?.["authorization"] ?? request.headers?.get?.("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    return authHeader.slice(7);
+  // The auth scheme is case-insensitive per RFC 7235, so "bearer", "Bearer" and
+  // "BEARER" are all the same scheme. Comparing case-sensitively rejected
+  // clients that send it lowercased, with a 401 and nothing to explain why.
+  if (typeof authHeader === "string" && authHeader.trim()) {
+    const m = authHeader.trim().match(/^Bearer\s+(\S+)$/i);
+    if (m) return m[1];
   }
 
   // Check Anthropic x-api-key header

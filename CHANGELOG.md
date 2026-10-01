@@ -81,6 +81,26 @@ recorded as covered. Driving the deployed panel adds what unit tests cannot: the
 buttons render, clicking one fills the textarea and hides the preset row, and
 **All models** writes the wildcard target without touching the prompt.
 
+### `HEAD` — Accept the auth scheme in any case
+
+`extractApiKey()` matched the scheme with `startsWith("Bearer ")`, so a client
+sending `bearer` or `BEARER` got a 401 for a perfectly valid key. RFC 7235 makes
+the scheme case-insensitive, and the failure looks identical to a wrong key, so
+there was nothing for the client to act on. Measured on the live router before
+the fix:
+
+| Header sent | Before | After |
+|---|---|---|
+| `Authorization: Bearer <key>` | 200 | 200 |
+| `Authorization: bearer <key>` | **401** | 200 |
+| `Authorization: BEARER <key>` | **401** | 200 |
+| `Authorization: Bearer    <key>` (extra spaces) | **401** | 200 |
+| `x-api-key: <key>` | 200 | 200 |
+
+13 assertions cover the cases, including that a bare token with no scheme and a
+`Basic` header are still rejected. Verified by mutation: restoring the
+case-sensitive comparison fails 7 of them.
+
 ### Earlier
 
 - `11b580f` — first-boot bootstrap generates and persists the dashboard password
@@ -93,7 +113,7 @@ buttons render, clicking one fills the textarea and hides the preset row, and
 
 ## Verification
 
-`npm run test` — **128 assertions, 9 suites, all passed**; `npm run typecheck`
+`npm run test` — **141 assertions, 10 suites, all passed**; `npm run typecheck`
 and `npm run build` exit 0; `hermes verify` OVERALL ok.
 
 | Suite | Assertions |
@@ -105,6 +125,7 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-live-prompt.mjs` | 34 |
 | `test-sysprompt-db-error.mjs` | 2 |
 | `test-sysprompt-presets.mjs` | 10 |
+| `test-extract-api-key.mjs` | 13 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |
 

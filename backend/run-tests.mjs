@@ -16,6 +16,7 @@ const SUITES = [
   ["test-live-prompt.mjs", true],
   ["test-sysprompt-db-error.mjs", true],
   ["test-sysprompt-presets.mjs", false],
+  ["test-extract-api-key.mjs", true],
   ["test-skills-route.mjs", true],
   ["test-auth-gate.mjs", true],
 ];
