@@ -1,7 +1,9 @@
 # Changelog
 
-Format: `## Fixed` entries must name **file:line** and be backed by a test or a
-recorded run. Anything unproven belongs under `## Known issues`, not here.
+Format: entries under **Fixed** must name **file:line** and be backed by a test
+or a recorded run. Anything unproven belongs under **Known issues**, not there.
+Sections are `## Fixed`, `## Verification`, `## Known issues` — one top-level
+heading each, in that order, with no horizontal rule splitting a section in two.
 
 ---
 
@@ -21,16 +23,6 @@ and the inner gate normalizes its path too (`auth.ts:86`).
 a fresh install exposed `/v1/*` with no key — an open LLM relay for anyone who
 found the URL. It now defaults to `true`
 (`backend/src/lib/db/repos/settingsRepo.js`).
-
-### Earlier
-
-- `11b580f` — first-boot bootstrap generates and persists the dashboard password
-  and the three secrets, so a fresh deploy needs no variables set
-- API keys stored hashed rather than plaintext
-- 13 dependency advisories patched (`npm audit fix`), leaving one `low` with no
-  upstream fix
-
----
 
 ### `8bd6d95` — Let a system prompt reach every model, with an env fallback
 
@@ -88,6 +80,14 @@ The preset commit shipped the code and its unit tests, but only the reducer was
 recorded as covered. Driving the deployed panel adds what unit tests cannot: the
 buttons render, clicking one fills the textarea and hides the preset row, and
 **All models** writes the wildcard target without touching the prompt.
+
+### Earlier
+
+- `11b580f` — first-boot bootstrap generates and persists the dashboard password
+  and the three secrets, so a fresh deploy needs no variables set
+- API keys stored hashed rather than plaintext
+- 13 dependency advisories patched (`npm audit fix`), leaving one `low` with no
+  upstream fix
 
 ---
 
@@ -161,14 +161,20 @@ Checked against GitHub and the live router, not from memory:
 
 | | |
 |---|---|
-| Repository | `otodidak404/syns4033router`, public, `fork: false`, no parent |
-| Default branch | `master`, working tree clean, identical to `origin` |
+| Repository | `otodidak404/syns4033router`, public, `fork: false`, parent: null |
+| Default branch | `master`, working tree clean, HEAD matches origin |
 | GitHub Actions | 0 workflows in the tree, 0 runs, 0 secrets |
-| Health | `{"status":"ok","version":"3.0.0"}` |
+| Health | `{"status": "ok", "version": "3.0.0"}` |
 | Auth guard | `/API/keys` → 401, `/v1` without a key → 401 |
 | Active deployment | `21:21:17Z SUCCESS` |
 | Volume | mounted at `/data`, Ready, survives a redeploy |
 | Served bundle | `index.rEM-m8JB.js` — matches the local build |
+
+Two files mention `railway.app` and neither is a leaked deployment:
+`README.md:184` is the deploy-button badge and
+`backend/src/routes/cli-tools/claude-settings/route.ts:73` is a base-URL
+allowlist suffix. The operator's own domains appear in neither the tree nor the
+history.
 
 No commit hash is recorded here on purpose: it would be stale by the next
 commit. Read it with `git log -1`, and check the two facts that actually matter
