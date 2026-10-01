@@ -101,6 +101,31 @@ the fix:
 `Basic` header are still rejected. Verified by mutation: restoring the
 case-sensitive comparison fails 7 of them.
 
+### `HEAD` — Fix the internal API key, which had never worked
+
+The provider page's model test reported `HTTP 401: Missing API key` for every
+model, including providers with a working key. That message blamed the operator
+for a failure that was ours.
+
+`getOrCreateInternalApiKey()` backs every router-to-router self-call. Its
+dynamic import of the machine-id helper resolved `../../shared/utils/machineId.js`
+from `src/lib/db/repos/`, which is `src/lib/shared/…` — a directory that does not
+exist. It threw `ERR_MODULE_NOT_FOUND` every time. The catch in
+`getInternalHeaders()` was empty, so the `Authorization` header was simply
+omitted, the self-call to `/v1` came back 401, and that 401 was what the
+operator saw. Two defects, one symptom:
+
+| | |
+|---|---|
+| Import path | one level short — needs `../../../shared/utils/machineId.js` |
+| Cached rejection | the rejected promise was stored in `internalKeyPromise` and returned by every later call, so no restart and no retry could recover |
+
+The silent catch is gone: if the key cannot be minted, the error says so rather
+than degrading into a misleading 401.
+
+5 assertions, verified by mutation — restoring the two-level path fails 2, and
+removing the `.catch` that resets the cache fails 1.
+
 ### Earlier
 
 - `11b580f` — first-boot bootstrap generates and persists the dashboard password
@@ -113,7 +138,7 @@ case-sensitive comparison fails 7 of them.
 
 ## Verification
 
-`npm run test` — **141 assertions, 10 suites, all passed**; `npm run typecheck`
+`npm run test` — **146 assertions, 11 suites, all passed**; `npm run typecheck`
 and `npm run build` exit 0; `hermes verify` OVERALL ok.
 
 | Suite | Assertions |
@@ -126,6 +151,7 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-sysprompt-db-error.mjs` | 2 |
 | `test-sysprompt-presets.mjs` | 10 |
 | `test-extract-api-key.mjs` | 13 |
+| `test-internal-api-key.mjs` | 5 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |
 

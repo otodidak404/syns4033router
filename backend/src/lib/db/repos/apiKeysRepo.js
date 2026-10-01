@@ -113,11 +113,22 @@ export async function getOrCreateInternalApiKey() {
         // rather than leaving a record that can never be used.
         await db.run(`DELETE FROM apiKeys WHERE id = ?`, [row.id]);
       }
-      const machineId = await (await import("../../shared/utils/machineId.js"))
+      // Three levels up, not two: from src/lib/db/repos/ this resolves to
+      // src/shared/utils/machineId.js. The two-level form pointed at
+      // src/lib/shared/…, which does not exist, so this dynamic import threw
+      // ERR_MODULE_NOT_FOUND and the internal key was never minted.
+      const machineId = await (await import("../../../shared/utils/machineId.js"))
         .getConsistentMachineId();
       const created = await createApiKey(INTERNAL_KEY_NAME, machineId);
       return created.key;
-    })();
+    })().catch((err) => {
+      // A rejected promise cached here would be returned by every later call
+      // for the rest of the process lifetime, so one transient failure would
+      // disable the internal key until the next restart. Clear it and let the
+      // next caller retry.
+      internalKeyPromise = null;
+      throw err;
+    });
   }
   return internalKeyPromise;
 }

@@ -40,13 +40,16 @@ function createSilentWavFile() {
 async function getInternalHeaders() {
   // /v1 enforces requireApiKey, so the self-call needs a real key. Stored keys
   // are hashed, so this uses the dedicated in-memory internal key.
-  let apiKey = null;
-  try {
-    apiKey = await getOrCreateInternalApiKey();
-  } catch {}
-
+  //
+  // If the key cannot be minted the self-call goes out unauthenticated and comes
+  // back as "Missing API key", which reads like the operator's problem when it
+  // is ours. Surface the real reason instead of dropping the header quietly.
   const headers = { "Content-Type": "application/json" };
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+  try {
+    headers["Authorization"] = `Bearer ${await getOrCreateInternalApiKey()}`;
+  } catch (err) {
+    throw new Error(`Could not mint the internal API key needed to reach /v1: ${err.message}`);
+  }
   headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
   return headers;
 }
