@@ -96,6 +96,7 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-sysprompt-presets.mjs` | 10 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |
+| `test-sysprompt-presets.mjs` | 10 |
 
 The new behaviour is guarded by mutation, not just by passing tests: removing the
 wildcard branch fails 3 assertions, removing the env fallthrough fails 2, and
@@ -115,6 +116,9 @@ Live, against the deployed router (`8bd6d95`):
 | Per-model prompt reaches the model | `BANANA-7391` returned |
 | Auth bypass closed | every casing of `/API/*` and `/V1/*` → 401 |
 | `/v1` without a key | 401 `Missing API key` |
+| Preset panel renders in the deployed build | 4 preset buttons + All models, no page errors |
+| Clicking a preset fills the textarea | 632 chars, prompt row then hidden |
+| All models sets the wildcard and keeps the prompt | model field `*`, prompt intact |
 
 ---
 
