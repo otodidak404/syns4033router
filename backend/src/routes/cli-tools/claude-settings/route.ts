@@ -70,6 +70,7 @@ export async function GET(req, res) {
     const is9Router = baseUrl.includes("localhost:3001") || 
                       baseUrl.includes("127.0.0.1:3001") || 
                       baseUrl.includes(".trycloudflare.com") || 
+                      baseUrl.includes(".up.railway.app") ||
                       baseUrl.includes("9router.com");
 
     return res.json({

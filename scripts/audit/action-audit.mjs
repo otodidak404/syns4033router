@@ -55,6 +55,14 @@ const confirmClick = async () => {
 console.log("System Prompt");
 let spId = null;
 
+// Clear leftovers from a previous run so this is safe to run repeatedly.
+await api("/api/system-prompts").then(async (r) => {
+  const { entries = [] } = await r.json().catch(() => ({}));
+  for (const e of entries.filter((x) => x.model === "audit/model-a")) {
+    await api(`/api/system-prompts/${e.id}`, { method: "DELETE" });
+  }
+});
+
 await check("create a system prompt", async () => {
   const r = await api("/api/system-prompts", {
     method: "POST",
@@ -124,6 +132,13 @@ await check("delete removes it", async () => {
 // ── Skills ─────────────────────────────────────────────────────────────────
 console.log("Skills");
 let msId = null;
+
+await api("/api/model-skills").then(async (r) => {
+  const { assignments = [] } = await r.json().catch(() => ({}));
+  for (const a of assignments.filter((x) => x.model === "audit/model-a")) {
+    await api(`/api/model-skills/${a.id}`, { method: "DELETE" });
+  }
+});
 
 await check("assign a skill to a model", async () => {
   const r = await api("/api/model-skills", {
