@@ -16,6 +16,9 @@ const DEFAULT_SETTINGS = {
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
   requireLogin: true,
+  // /v1 is an LLM relay. Without a key, anyone who can reach the instance
+  // spends the operator's provider credentials. Fail closed.
+  requireApiKey: true,
   tunnelDashboardAccess: true,
   authMode: "password",
   oidcIssuerUrl: "",

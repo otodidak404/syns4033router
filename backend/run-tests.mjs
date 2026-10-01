@@ -15,6 +15,7 @@ const SUITES = [
   ["test-model-skill.mjs", false],
   ["test-live-prompt.mjs", true],
   ["test-skills-route.mjs", true],
+  ["test-auth-gate.mjs", true],
 ];
 
 let failed = 0;

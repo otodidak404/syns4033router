@@ -5,7 +5,7 @@ import helmet from "helmet";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { authMiddleware } from "./middleware/auth.js";
+import { authMiddleware, requiresAuth } from "./middleware/auth.js";
 import { buildAutoRouter } from "./autoRouter.js";
 import { runFirstRunBootstrap } from "./lib/bootstrap/firstRun.js";
 import { getSettings, updateSettings } from "./lib/localDb.js";
@@ -69,13 +69,19 @@ app.get("/api/health", (_req, res) => {
 // Authentication only applies to API/proxy traffic. Applying it globally would
 // prevent the login page and SPA assets from loading when login is required.
 app.use((req, res, next) => {
+  // Case-insensitive on purpose. Express matches the /api and /v1 mounts
+  // case-insensitively, so /API/keys reaches the same handlers as /api/keys.
+  // A case-sensitive test here skipped authMiddleware entirely for the uppercase
+  // spelling, which exposed keys, provider credentials, and stored system
+  // prompts, and let anyone PATCH /api/settings to turn login off for good.
+  const path = req.path;
   if (
-    req.path === "/api" ||
-    req.path.startsWith("/api/") ||
-    req.path === "/v1" ||
-    req.path.startsWith("/v1/") ||
-    req.path === "/v1beta" ||
-    req.path.startsWith("/v1beta/")
+    path === "/api" ||
+    path.startsWith("/api/") ||
+    path === "/v1" ||
+    path.startsWith("/v1/") ||
+    path === "/v1beta" ||
+    path.startsWith("/v1beta/")
   ) {
     return authMiddleware(req, res, next);
   }

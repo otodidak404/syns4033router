@@ -34,6 +34,18 @@ const PUBLIC_API_PATHS = [
 
 const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta"];
 
+// The outer gate: does this request need auth at all? Shared with server.ts so
+// the two cannot drift — an inline copy here is how the case bug survived a
+// fix in the other file.
+export function requiresAuth(pathname: string): boolean {
+  const p = pathname.toLowerCase();
+  return (
+    p === "/api" || p.startsWith("/api/") ||
+    p === "/v1" || p.startsWith("/v1/") ||
+    p === "/v1beta" || p.startsWith("/v1beta/")
+  );
+}
+
 const ALWAYS_PROTECTED = [
   "/api/shutdown",
   "/api/settings/database",
@@ -68,7 +80,10 @@ export async function authMiddleware(
   res: Response,
   next: NextFunction
 ) {
-  const path = req.path;
+  // Normalised for the same reason as requiresAuth: Express matches the mount
+  // case-insensitively, so the spelling the client sent must not decide what is
+  // public, what is protected, or whether a CLI token is accepted.
+  const path = req.path.toLowerCase();
 
   // Allow public paths
   if (PUBLIC_API_PATHS.some((p) => path === p || path.startsWith(p + "/")))
