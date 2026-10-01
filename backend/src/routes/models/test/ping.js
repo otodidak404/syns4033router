@@ -1,4 +1,4 @@
-import { getApiKeys } from "../../../lib/localDb.js";
+import { getOrCreateInternalApiKey } from "../../../lib/localDb.js";
 import { UPDATER_CONFIG } from "../../../shared/constants/config.js";
 import { getConsistentMachineId } from "../../../shared/utils/machineId.js";
 
@@ -38,10 +38,11 @@ function createSilentWavFile() {
 }
 
 async function getInternalHeaders() {
+  // /v1 enforces requireApiKey, so the self-call needs a real key. Stored keys
+  // are hashed, so this uses the dedicated in-memory internal key.
   let apiKey = null;
   try {
-    const keys = await getApiKeys();
-    apiKey = keys.find((k) => k.isActive !== false)?.key || null;
+    apiKey = await getOrCreateInternalApiKey();
   } catch {}
 
   const headers = { "Content-Type": "application/json" };

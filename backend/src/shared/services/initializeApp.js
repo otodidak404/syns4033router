@@ -2,7 +2,7 @@ import os from "os";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { existsSync } from "fs";
-import { cleanupProviderConnections, getSettings, updateSettings, getApiKeys } from "../../lib/localDb.js";
+import { cleanupProviderConnections, getSettings, updateSettings, getOrCreateInternalApiKey } from "../../lib/localDb.js";
 import {
   enableTunnel, enableTailscale,
   isTunnelManuallyDisabled, isTunnelReconnecting, isTailscaleReconnecting,
@@ -108,11 +108,11 @@ async function autoStartMitm() {
       return;
     }
 
-    const keys = await getApiKeys();
-    const activeKey = keys.find(k => k.isActive !== false);
-
     console.log("[InitApp] MITM was enabled, auto-starting...");
-    await startMitm(activeKey?.key || "sk_9router", password);
+    // Internal key: stored user keys are hashed and cannot be read back, so
+    // the router uses its own dedicated key for this self-call.
+    const internalKey = await getOrCreateInternalApiKey();
+    await startMitm(internalKey, password);
     console.log("[InitApp] MITM auto-started");
     try {
       await restoreToolDNS(password);

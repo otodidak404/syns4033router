@@ -318,7 +318,7 @@ async function loadDaysInRange(adapter, maxDays) {
 export async function getUsageStats(period = "all") {
   const db = await getAdapter();
 
-  const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
+  const [{ getProviderConnections }, { getApiKeyLookupMap, hashApiKey }, { getProviderNodes }] = await Promise.all([
     import("./connectionsRepo.js"),
     import("./apiKeysRepo.js"),
     import("./nodesRepo.js"),
@@ -335,10 +335,14 @@ export async function getUsageStats(period = "all") {
     for (const n of nodes) if (n.id && n.name) providerNodeNameMap[n.id] = n.name;
   } catch {}
 
-  let allApiKeys = [];
-  try { allApiKeys = await getApiKeys(); } catch {}
-  const apiKeyMap = {};
-  for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
+  // Keys are stored hashed. Usage rows keep the key as presented, so hash it
+  // at lookup time; that matches historical rows and new ones alike.
+  let apiKeyMap = {};
+  try { apiKeyMap = await getApiKeyLookupMap(); } catch {}
+  const apiKeyFor = (presented) => {
+    if (!presented) return undefined;
+    return apiKeyMap[hashApiKey(presented)];
+  };
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
   const recentRows = await db.all(`SELECT timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
@@ -472,7 +476,7 @@ export async function getUsageStats(period = "all") {
         const provider = ak.provider || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         const apiKeyVal = ak.apiKey;
-        const keyInfo = apiKeyVal ? apiKeyMap[apiKeyVal] : null;
+        const keyInfo = apiKeyFor(apiKeyVal);
         const keyName = keyInfo?.name || (apiKeyVal ? apiKeyVal.slice(0, 8) + "..." : "Local (No API Key)");
         const apiKeyKey = apiKeyVal || "local-no-key";
         if (!stats.byApiKey[akKey]) {
@@ -583,7 +587,7 @@ export async function getUsageStats(period = "all") {
       }
 
       if (r.apiKey && typeof r.apiKey === "string") {
-        const keyInfo = apiKeyMap[r.apiKey];
+        const keyInfo = apiKeyFor(r.apiKey);
         const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
         const akKey = `${r.apiKey}|${r.model}|${r.provider || "unknown"}`;
         if (!stats.byApiKey[akKey]) {
