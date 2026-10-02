@@ -9,6 +9,8 @@ import fs from "node:fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { walk } from "./testlib/frontend-scan.mjs";
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, "src");  // backend/src
 
@@ -17,15 +19,6 @@ const t = (name, fn) => {
   try { fn(); console.log(`  ok  ${name}`); pass++; }
   catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); process.exitCode = 1; }
 };
-
-function walk(dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p, out);
-    else if (/\.(ts|js|mjs)$/.test(e.name)) out.push(p);
-  }
-  return out;
-}
 
 const files = walk(SRC);
 

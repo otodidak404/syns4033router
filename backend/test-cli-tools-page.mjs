@@ -1,23 +1,28 @@
-// /dashboard/cli-tools had three writers that could fail in silence.
+// /dashboard/cli-tools had four writers that could fail in silence.
 //
 // fetch() rejects only on a network error. An HTTP 400 or 500 is an ordinary
 // response that resolves, so `await fetch(...)` with the response discarded
-// treats a rejected save as a successful one. Three shapes of it here:
+// treats a rejected save as a successful one. The shapes here:
 //
-//   MitmToolCard   `catch { /* ignore */ }` — a mapping is what redirects an
-//                  intercepted IDE request, so a save that failed left the card
-//                  showing a redirect that was not in force, while traffic kept
-//                  flowing to the old target. Nothing was logged either.
-//   OpenCodeToolCard  the modal closes and the model list is already in local
-//                  state before the POST is even sent.
-//   CopilotToolCard  same, and it is near-identical to the OpenCode one.
+//   MitmToolCard     `catch { /* ignore */ }` — a mapping is what redirects an
+//                    intercepted IDE request, so a failed save left the card
+//                    showing a redirect that was not in force while traffic kept
+//                    flowing to the old target. Nothing was logged either.
+//   OpenCodeToolCard the modal closes and the model list is already in local
+//                    state before the POST is even sent.
+//   CopilotToolCard  near-identical to the OpenCode one.
+//   ClaudeToolCard   a toggle moves, then the save throws the result away.
 //
-// The scan is repo-wide because the same shape has turned up on six pages now.
-// A per-file check would have found only whichever file someone happened to open.
+// Two more lived outside this page and the scan below found them: a file write
+// on /dashboard/translator and a batch toggle on /dashboard/providers. So the
+// scan is repo-wide — counting the pages it has hit would go stale every time
+// one moves, and a per-file check finds only whichever file someone opened.
 import assert from "assert";
 import fs from "node:fs";
 import path from "path";
 import { fileURLToPath } from "url";
+
+import { walk } from "./testlib/frontend-scan.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FE = path.join(HERE, "..", "frontend", "src");
@@ -29,14 +34,6 @@ const t = (name, fn) => {
   catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); process.exitCode = 1; }
 };
 
-function walk(dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p, out);
-    else if (/\.(jsx|tsx)$/.test(e.name)) out.push(p);
-  }
-  return out;
-}
 const read = (rel) => fs.readFileSync(path.join(CARDS, rel), "utf8");
 
 const SWALLOWED = /catch\s*\{\s*\/\*[^*]*\*\/\s*\}/;
@@ -141,13 +138,11 @@ t("every cli-tools card that writes checks the response", () => {
         k++;
       }
       const call = src.slice(idx, k + 1);
-      // The check often sits well below the call — MitmServerCard assigns res
-      // inside a branch and tests it 25 lines later — so a character window
-      // both misses it and reads as a defect that is not there.
-      // Bound the look-ahead by the end of the enclosing handler. indexOf
-      // returns -1 when there is no such marker, and -1 + 4 is 3 — truthy, so the
-      // fallback never fires and the window collapses to nothing, flagging writes
-      // that do check their status three lines later.
+      // Look ahead to the end of the enclosing handler, not a fixed window: the
+      // status check often sits well below the call — MitmServerCard assigns res
+      // inside a branch and tests it 25 lines later. Guard the -1 explicitly,
+      // since -1 + 4 is truthy and an unguarded fallback never fires, which
+      // collapses the window and flags writes that do check.
       const end = src.indexOf("\n  };", k + 1);
       const after = src.slice(k + 1, end === -1 ? k + 1200 : end + 4);
       const isWrite = /method:\s*"(PUT|POST|PATCH|DELETE)"/.test(call);
