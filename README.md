@@ -181,21 +181,39 @@ Heroku injects `PORT` automatically.
 
 ### Deploy to Railway
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/new)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/new?template=https://github.com/otodidak404/syns4033router)
 
-There is no one-click link for a self-hosted repo, so this takes a few steps.
+This repository is flagged as a Railway template, so the button above deploys it
+without any manual setup. Railway reads `railway.toml`, builds the included
+Dockerfile, and supplies `PORT`, `RAILWAY_PUBLIC_DOMAIN`, and
+`RAILWAY_PRIVATE_DOMAIN` on its own. **No variables are required.**
 
-1. Open [railway.com/new](https://railway.com/new) and choose **New Project →
-   Deploy from GitHub Repo**. If your repository does not appear, install the
-   Railway GitHub App first and grant it access to this repository.
-2. Select `otodidak404/syns4033router`. Railway reads `railway.toml`, builds
-   the included Dockerfile, and supplies `PORT`, `RAILWAY_PUBLIC_DOMAIN`, and
-   `RAILWAY_PRIVATE_DOMAIN` on its own. **No variables are required.**
+**Before the first deploy, install the Railway GitHub App** for your account and
+grant it access to this repository — the button cannot create a project for an
+app that has not been installed. If the repository does not appear in Railway's
+repo picker, that access is what is missing.
 
-On first boot the gateway generates everything it needs. Your dashboard
-password, the JWT signing secret, the API-key hashing secret, and the machine-id
-salt are all created, stored in the database, and the password is printed once
-to the deployment log:
+### 1. Attach a volume at `/data`
+
+Do this immediately after the deploy finishes. It is the one step the template
+cannot do for you.
+
+Without a volume the SQLite database lives in the container, so it is destroyed
+on every deploy — and with it the generated password, your API keys, your system
+prompts, and every provider connection. Adding the volume **after** the fact does
+not recover that first deploy's data; it only protects the next one.
+
+**Variables is not where this is.** In Railway, open the service, then
+**Settings → Volumes → Add Volume**, and set the mount path to `/data`.
+
+Add a PostgreSQL service and point `DATABASE_URL` at it instead if you prefer the
+database to outlive redeploys independently of volumes.
+
+### 2. Get the generated password from the log
+
+On first boot the gateway creates everything it needs. The dashboard password,
+the JWT signing secret, the API-key hashing secret, and the machine-id salt are
+all generated, stored in the database, and **the password is printed once**:
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -208,24 +226,43 @@ to the deployment log:
 └────────────────────────────────────────────────────────────────┘
 ```
 
-Open **Logs** in Railway, copy that password, sign in, and change it under
-**Settings**. The password is random rather than a fixed default on purpose: a
-known default would give an authenticated instance to anyone who found the URL
-first.
+Open **Logs** in Railway and copy it, then sign in and change it under
+**Settings**. It is random rather than a fixed default on purpose: a known
+default would hand an authenticated instance to anyone who found the URL first.
 
-If you would rather manage these yourself, set `INITIAL_PASSWORD`,
-`JWT_SECRET`, `API_KEY_SECRET`, and `MACHINE_ID_SALT` in the service's
-**Variables** tab. Anything you set takes precedence and nothing is generated
-for it.
+If you miss it, the password lives only in the database. Deleting the volume and
+redeploying generates a new one.
 
-3. Optional but recommended for anything long-lived: attach a Volume mounted at
-   `/data` to keep the SQLite database across deploys, or add a PostgreSQL
-   service and point `DATABASE_URL` at it. With neither, the database — and
-   therefore the generated password — resets on every deploy.
-4. Generate a public domain under **Settings → Networking**.
+To manage these yourself instead, set `INITIAL_PASSWORD`, `JWT_SECRET`,
+`API_KEY_SECRET`, and `MACHINE_ID_SALT` in the service's **Variables** tab.
+Anything you set takes precedence and nothing is generated for it — but only on a
+fresh database, so set it before the first boot rather than after.
 
-Everything else in `backend/.env.example` is optional and has a working
-default.
+### 3. Generate a public domain
+
+**Settings → Networking → Generate Domain.** Railway serves it over HTTPS with no
+further configuration.
+
+### Deploying from a terminal instead
+
+The button needs the GitHub App. If you would rather push the build from a clone
+— which needs no GitHub connection at all, and is the path to use when you want
+the deployment driven from your own machine:
+
+```bash
+git clone https://github.com/otodidak404/syns4033router.git
+cd syns4033router
+railway login
+railway up --detach
+railway volume add -m /data
+```
+
+Attach the volume before anything long-lived matters. Note that the service is not
+linked to GitHub this way, so `git push` does not deploy — rerun `railway up` for
+each update.
+
+Everything else in `backend/.env.example` is optional and has a working default.
+
 ### Switching Between SQLite and PostgreSQL
 
 - Without `DATABASE_URL`, SYNS4033ROUTER uses SQLite at `DATA_DIR/db/data.sqlite`.
