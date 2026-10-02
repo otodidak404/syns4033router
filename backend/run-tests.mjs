@@ -35,6 +35,7 @@ const SUITES = [
   ["test-providers-page.mjs", false],
   ["test-system-prompt-page.mjs", false],
   ["test-combos-page.mjs", false],
+  ["test-usage-page.mjs", false],
 ];
 
 let failed = 0;

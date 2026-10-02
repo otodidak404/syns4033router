@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Card, Badge, Button, Toggle, AddCustomEmbeddingModal } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
+import { expectOk } from "@/shared/utils/api";
 
 // Kinds that support combos (currently disabled for image/tts — temporarily hidden).
 // webSearch/webFetch handled by /web page.
@@ -195,15 +196,21 @@ export default function MediaProviderKindPage() {
     setConnections((prev) =>
       prev.map((c) => (c.provider === providerId ? { ...c, isActive: newActive } : c))
     );
-    await Promise.allSettled(
+    // allSettled reports "fulfilled" for a 404 — it only rejects on a network
+    // error — so the results have to be read, not collected.
+    const results = await Promise.allSettled(
       providerConns.map((c) =>
         fetch(`/api/providers/${c.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ isActive: newActive }),
-        })
+        }).then(expectOk)
       )
     );
+    if (results.some((r) => r.status === "rejected")) {
+      await fetchConnections();
+      toast?.({ title: "Some connections could not be updated", type: "error" });
+    }
   };
 
   const handleCreateCombo = async () => {

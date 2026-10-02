@@ -3,6 +3,38 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/usage` — the bulk connection toggle could fail silently
+
+`bulkSetActive` on the Provider Limits panel awaited `Promise.all` over
+`PUT /api/providers/:id` and then reconciled the list. fetch() rejects only on a
+network error; an HTTP 404 or 500 resolves. So the aggregate resolved, the
+reconcile re-read the unchanged server state, and the operator was told the bulk
+enable or disable had worked when none of it had.
+
+Each write is now chained through `expectOk` and the settled results are read
+before the reconcile runs.
+
+### `/dashboard/media-providers` — same defect, found by the guard rather than by reading
+
+The `test-usage-page.mjs` scan walks the whole frontend rather than one page, and
+it turned this up on a menu that has not been audited. The provider toggle on the
+media-provider page had the identical unguarded `Promise.allSettled` write. Fixed
+the same way.
+
+That is the fourth page carrying this bug — `/dashboard/providers`,
+`/dashboard/combos`, `/dashboard/usage` and `/dashboard/media-providers` — each
+found separately, each in a different shape. A test scoped to the page it was
+written for would have let the next one through, so the suite is repo-wide: any
+batched write anywhere in `frontend/src` without `expectOk` turns it red.
+
+Covered by `backend/test-usage-page.mjs` (5). Five mutations turn it red:
+removing either guard, deleting the settled-results check, removing an import,
+and making `expectOk` return instead of throw. Two of those tests had to be
+repaired first — the batch regex required a literal "settle" and matched nothing,
+and the throw assertion tested the whole `api.js` file rather than the
+`expectOk` body, where `handleResponse` throws too.
+
+
 ### `/dashboard/combos` — a combo posted with a string instead of a list called one character at a time
 
 `getRotatedModels` reads `models.length` and spreads the list into a new array. A
@@ -401,7 +433,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 283 assertions, 26 suites, all passed |
+| `npm run test` | 288 assertions, 27 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

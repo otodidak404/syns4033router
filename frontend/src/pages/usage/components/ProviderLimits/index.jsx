@@ -7,6 +7,7 @@ import { parseQuotaData, calculatePercentage } from "./utils";
 import Card from "@/shared/components/Card";
 import { EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { expectOk } from "@/shared/utils/api";
 
 function getConnectionLabel(connection) {
   const isEmail = (value) =>
@@ -687,15 +688,23 @@ export default function ProviderLimits() {
       if (!targetIds.length || bulkToggling) return;
       setBulkToggling(true);
       try {
-        await Promise.all(
+        // Promise.all resolves even when the server answers 404 or 500 — fetch
+        // only rejects on a network error — so a bulk enable or disable could
+        // fail completely while the reconcile below fetched the unchanged state
+        // and reported success. expectOk turns a rejected write into a rejection
+        // the catch can see.
+        const results = await Promise.allSettled(
           targetIds.map((id) =>
             fetch(`/api/providers/${id}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ isActive }),
-            }),
+            }).then(expectOk),
           ),
         );
+        if (results.some((r) => r.status === "rejected")) {
+          throw new Error("at least one connection could not be updated");
+        }
         await reconcileConnectionsPage(fetchConnections, page);
       } catch (error) {
         console.error("Error bulk toggling connections:", error);
