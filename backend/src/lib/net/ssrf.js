@@ -62,7 +62,14 @@ function isPrivateAddress(ip) {
 
 async function resolvesToPublicAddress(hostname) {
   // A literal IP never goes to DNS; the range check above is the whole answer.
-  if (net.isIP(hostname)) return { ok: !isPrivateAddress(hostname) };
+  // The reason matters here: this is the case an operator actually hits, and an
+  // "undefined" in the error told them nothing about which address was refused.
+  if (net.isIP(hostname)) {
+    const priv = isPrivateAddress(hostname);
+    return priv
+      ? { ok: false, reason: `${hostname} is not a public address` }
+      : { ok: true };
+  }
 
   let records;
   try {

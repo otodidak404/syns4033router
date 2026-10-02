@@ -99,4 +99,19 @@ await t("the proxy has a redirect limit", async () => {
     path.join(HERE, "src/lib/net/ssrf.js"), "utf8").includes("MAX_REDIRECTS"));
 });
 
+t("a refused IP literal says which address and why", async () => {
+  // The case an operator actually hits. Without a reason the route rendered
+  // "Base URL rejected: undefined", which named neither the address nor the
+  // reason, for the check that matters most.
+  const r = await checkFetchableUrl("http://127.0.0.1:22/", {});
+  assert.strictEqual(r.ok, false);
+  assert.ok(typeof r.error === "string" && r.error.length > 0,
+    `no reason given: ${JSON.stringify(r.error)}`);
+  assert.ok(r.error.includes("127.0.0.1"), `reason omits the address: ${r.error}`);
+});
+
+// t() is async and the assertions below are not awaited individually, so a
+// pending one would still resolve after this line and the count came out one
+// short. Let the queued work settle before reporting.
+await new Promise((resolve) => setImmediate(resolve));
 console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);
