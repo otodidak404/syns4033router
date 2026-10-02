@@ -78,7 +78,9 @@ t("a redacted header keeps its name so the dump still reads as a request", () =>
   const fn = src.slice(i, src.indexOf("\n}\n", i));
   // out[k] = … — the key survives, only the value goes
   assert.ok(/out\[k\]\s*=/.test(fn), "the header name is not preserved");
-  assert.ok(/delete out\[|return undefined/.test(fn) === false,
+  // Dropping the key instead of redacting its value would leave a dump missing
+  // the header entirely, which reads as a different request than the real one.
+  assert.ok(!/\bcontinue\b|delete out\[/.test(fn),
     "headers are dropped rather than marked, so the dump loses useful shape");
 });
 
@@ -148,13 +150,18 @@ t("no key or certificate is tracked today", () => {
 // The engine itself must still start: redaction is on the request path.
 t("the logger still loads", () => {
   const require = createRequire(import.meta.url);
+  const target = path.join(MITM, "logger.js");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mitm-logger-"));
+  const before = process.env.DATA_DIR;
   process.env.DATA_DIR = dir;
-  delete require.cache[require.resolve(path.join(MITM, "logger.js"))];
+  delete require.cache[require.resolve(target)];
   try {
-    const mod = require(path.join(MITM, "logger.js"));
-    assert.ok(mod && typeof mod === "object", "logger.js did not export an object");
+    assert.ok(require(target) && typeof require(target) === "object", "logger.js did not export an object");
   } finally {
+    // Leaving DATA_DIR pointed at a deleted temp dir would poison the next suite.
+    if (before === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = before;
+    delete require.cache[require.resolve(target)];
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
