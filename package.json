@@ -2,7 +2,7 @@
   "name": "9router-v3",
   "private": true,
   "version": "3.0.0",
-  "description": "SYNS4033ROUTER by codestorm — self-hosted AI gateway monorepo",
+  "description": "SYNS4033ROUTER by codestorm \u2014 self-hosted AI gateway monorepo",
   "workspaces": [
     "frontend",
     "backend",
@@ -20,5 +20,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "overrides": {
+    "dompurify": "3.4.16"
   }
 }
