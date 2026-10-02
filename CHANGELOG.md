@@ -3,6 +3,16 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### Test suites share one scanner instead of three copies
+
+`walk` and the bracket-matching `batchedWrites` scan existed in two suites after
+this defect was found on four pages. They now live in
+`backend/testlib/frontend-scan.mjs` and both import them, so a fix to the scan
+lands in one place. The repo-wide batch assertion moved entirely to
+`test-usage-page.mjs`; `test-providers-page.mjs` keeps only what is specific to
+its page.
+
+
 ### `/dashboard/usage` — the bulk connection toggle could fail silently
 
 `bulkSetActive` on the Provider Limits panel awaited `Promise.all` over
@@ -433,7 +443,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 288 assertions, 27 suites, all passed |
+| `npm run test` | 286 assertions, 27 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

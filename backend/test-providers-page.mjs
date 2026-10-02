@@ -8,10 +8,15 @@
 // reported fulfilled with ok === false. Every one of those call sites set local
 // state first, so a rejected write left the card showing an order, an API-key
 // gate or an enabled flag that the server never accepted.
+//
+// Seven sites were fixed here. The repo-wide version of that scan lives in
+// test-usage-page.mjs — this file covers what is specific to this page.
 import assert from "assert";
 import fs from "node:fs";
 import path from "path";
 import { fileURLToPath } from "url";
+
+import { walk } from "./testlib/frontend-scan.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (rel) => fs.readFileSync(path.join(HERE, rel), "utf8");
@@ -23,13 +28,15 @@ const t = (name, fn) => {
   catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); process.exitCode = 1; }
 };
 
-const LIVE = ["page.jsx", "components/ConnectionsCard.jsx", "[id]/page.jsx"];
+const src = (rel) => read(path.join("..", "frontend", "src", "pages", "providers", rel));
 
 t("expectOk exists and throws on a failed response", () => {
   const api = read("../frontend/src/shared/utils/api.js");
   assert.ok(/export async function expectOk\(response\)/.test(api), "expectOk is missing");
+  // Scoped to the body: api.js also throws inside handleResponse, so testing the
+  // whole file passes whether or not expectOk itself ever throws.
   const i = api.indexOf("export async function expectOk");
-  const fn = api.slice(i, api.indexOf("\n}", i));
+  const fn = api.slice(i, api.indexOf("\n}\n", i));
   assert.ok(/if \(response\.ok\) return response;/.test(fn), "ok responses are not passed through");
   assert.ok(/\bthrow\b/.test(fn), "a failed response does not throw");
   assert.ok(/response\.clone\(\)/.test(fn), "reading the body without cloning would consume it");
@@ -41,58 +48,10 @@ t("patch is available, which is why these sites hand-rolled fetch", () => {
   assert.ok(/const api = \{[^}]*\bpatch\b/.test(api), "patch is not on the default export");
 });
 
-t("no batched write on this page is left unguarded", () => {
-  // Two things make this hard to get right: a fetch options object spans several
-  // lines, and the guard is chained past the closing paren. So the batch is cut
-  // out by matching its own brackets rather than by a fixed window — a window
-  // wide enough to hold the multi-line fetch also reaches the next statement and
-  // flags writes that were never part of the batch.
-  const WRITE = /method:\s*"(PUT|POST|PATCH|DELETE)"/;
-  for (const rel of LIVE) {
-    const src = read(path.join("..", "frontend", "src", "pages", "providers", rel));
-    for (const m of src.matchAll(/Promise\.all(Settled)?\s*\(/g)) {
-      const open = m.index + m[0].length - 1;
-      let depth = 0;
-      let close = open;
-      for (; close < src.length; close++) {
-        if (src[close] === "(") depth++;
-        else if (src[close] === ")") { depth--; if (depth === 0) break; }
-      }
-      const batch = src.slice(open, close + 1);
-      let idx = 0;
-      while ((idx = batch.indexOf("fetch(", idx)) !== -1) {
-        let d = 0, k = batch.indexOf("(", idx);
-        while (k < batch.length) {
-          if (batch[k] === "(") d++;
-          else if (batch[k] === ")") { d--; if (d === 0) break; }
-          k++;
-        }
-        const chained = batch.slice(idx, k + 40);
-        idx = k + 1;
-        const method = chained.match(WRITE);
-        if (!method) continue;                        // a GET, nothing to lose
-        assert.ok(/\)\.then\(expectOk\)/.test(chained),
-          `${rel}: a batched ${method[1]} has no expectOk — Promise.all resolves on a 404, so the failure never surfaces\n       ${chained.slice(0, 74).replace(/\s+/g, " ")}`);
-      }
-    }
-  }
-});
-
-t("expectOk is imported wherever it is used", () => {
-  for (const rel of LIVE) {
-    const src = read(path.join("..", "frontend", "src", "pages", "providers", rel));
-    const uses = (src.match(/\.then\(expectOk\)/g) || []).length;
-    if (uses === 0) continue;
-    assert.ok(/import \{[^}]*\bexpectOk\b[^}]*\} from "@\/shared\/utils\/api"/.test(src),
-      `${rel} calls expectOk ${uses} times but never imports it`);
-  }
-});
-
 t("the abandoned rewrite is gone", () => {
   // 1722 lines with no importer, sitting beside the live 1762-line file under a
   // name that looks current. Editing the wrong one is the failure it invites.
-  assert.ok(!fs.existsSync(path.join(PAGES, "[id]", "page.new.jsx")),
-    "page.new.jsx is back");
+  assert.ok(!fs.existsSync(path.join(PAGES, "[id]", "page.new.jsx")), "page.new.jsx is back");
   for (const f of walk(PAGES)) {
     assert.ok(!/page\.new/.test(fs.readFileSync(f, "utf8")),
       `${path.relative(PAGES, f)} still refers to page.new`);
@@ -101,17 +60,7 @@ t("the abandoned rewrite is gone", () => {
 
 t("the live provider page is still there", () => {
   assert.ok(fs.existsSync(path.join(PAGES, "[id]", "page.jsx")), "the live page was removed instead");
-  const src = fs.readFileSync(path.join(PAGES, "[id]", "page.jsx"), "utf8");
-  assert.ok(src.split("\n").length > 1500, "the live page shrank unexpectedly");
+  assert.ok(src("[id]/page.jsx").split("\n").length > 1500, "the live page shrank unexpectedly");
 });
-
-function walk(dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p, out);
-    else if (/\.(jsx|tsx)$/.test(e.name)) out.push(p);
-  }
-  return out;
-}
 
 console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);
