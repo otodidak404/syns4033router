@@ -76,6 +76,23 @@ SYNS4033ROUTER does not claim authorship of the routing engine or provider integ
 
 ## Deployment Options
 
+### The database export contains live credentials
+
+Settings → Database can export the whole configuration as JSON, and that file
+contains `JWT_SECRET`, `API_KEY_SECRET` and `MACHINE_ID_SALT` **in plaintext**.
+The session cookie is signed with the first of those, so anyone holding the file
+can authenticate to your dashboard without the password — it is a master
+credential, not a settings dump.
+
+Treat the export as a live secret: do not commit it, do not paste it into chat,
+and delete it once the backup is somewhere you trust. Restoring from it puts those
+secrets back, which is why they are included at all — a settings backup that
+silently dropped them would produce an instance that cannot verify its own
+sessions.
+
+Every `/api`, `/v1` and `/v1beta` response is sent with `Cache-Control: no-store`
+so a browser or an intermediary cannot hold these after you read them.
+
 ### Common Environment Variables
 
 Start from [`backend/.env.example`](./backend/.env.example). The main runtime variables are:

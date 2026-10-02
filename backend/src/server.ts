@@ -55,6 +55,27 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-9r-cli-token"],
 }));
 
+// ─── Cache Policy ─────────────────────────────────────────────────────────────
+// Nothing under /api, /v1 or /v1beta is cacheable. /api/settings returns
+// JWT_SECRET, API_KEY_SECRET and MACHINE_ID_SALT in plaintext, and
+// /api/settings/database returns those plus the full configuration. With no
+// Cache-Control a browser or an intermediary is free to keep them, and a shared
+// proxy then holds the session signing secret. Set here rather than per route so
+// a response a route forgot to mark is still not stored, and ETag is dropped
+// because the body differs per viewer and must not be revalidated by a cache.
+app.use((req, res, next) => {
+  const p = req.path.toLowerCase();
+  if (p === "/api" || p.startsWith("/api/") ||
+      p === "/v1" || p.startsWith("/v1/") ||
+      p === "/v1beta" || p.startsWith("/v1beta/")) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.removeHeader("ETag");
+  }
+  next();
+});
+
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
 app.use(cookieParser());
 app.use(express.json({ limit: "128mb" }));

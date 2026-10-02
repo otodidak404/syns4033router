@@ -24,6 +24,7 @@ const SUITES = [
   ["test-playground-extract.mjs", false],
   ["test-playground-target-model.mjs", false],
   ["test-audit-fixes.mjs", false],
+  ["test-no-store.mjs", false],
   ["test-model-catalogue.mjs", false],
   ["test-internal-api-key.mjs", true],
   ["test-skills-route.mjs", true],
