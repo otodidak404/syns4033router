@@ -75,21 +75,23 @@ async function runLeg({ model, message, systemPrompt }) {
     body: JSON.stringify(body),
   }));
 
+  const started = Date.now();
   try {
     const res = await handleChat(req);
     const raw = typeof res === "string" ? res : await res?.text?.();
-    return { ok: true, text: extractText(raw) };
+    return { ok: true, text: extractText(raw), latencyMs: Date.now() - started };
   } catch (err) {
-    return { ok: false, error: err.message };
+    return { ok: false, error: err.message, latencyMs: Date.now() - started };
   }
 }
 
 export async function POST_handler(req, res) {
-  let payload;
-  try {
-    payload = await req.json();
-  } catch {
-    return res.status(400).json({ error: "Invalid JSON body" });
+  // express.json() has already consumed the body by the time a handler runs,
+  // so req.json() here reads a stream that is already drained. Every other route
+  // reads req.body directly.
+  const payload = req.body;
+  if (!payload || typeof payload !== "object") {
+    return res.status(400).json({ error: "A JSON body is required" });
   }
 
   const model = typeof payload.model === "string" ? payload.model.trim() : "";
@@ -113,7 +115,6 @@ export async function POST_handler(req, res) {
     return res.status(400).json({ error: `prompt must be under ${MAX_PROMPT} characters` });
   }
 
-  const withPrompt = message.length > 0;
   const run = (prompt) => runLeg({ model, message, systemPrompt: prompt });
 
   const work = entry
