@@ -3,6 +3,34 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/quota` — audited, no defect found
+
+`quota/page.jsx` is an eleven-line wrapper rendering the same `ProviderLimits`
+component as `/dashboard/usage`, so the bulk-toggle fix above reaches both routes.
+Checked and correct, with no change needed:
+
+- the empty list is the eligibility filter, not a fault — `providers/client`
+  admits only oauth, cookie, or a `USAGE_APIKEY_PROVIDERS` provider, and an
+  ordinary API-key connection (gemini, ollama, openrouter) has no upstream quota
+  endpoint. A deployment holding only API-key connections legitimately sees an
+  empty list, and the page says so rather than showing a bare empty table.
+- `ProviderLimits` takes no props, so the two routes cannot diverge; `page` is
+  internal state.
+- quota fetch errors are handled per connection: 404 skipped, 401 handled, and
+  the rest rendered against the row.
+
+Recorded because "audited, nothing found" is a result worth having written down,
+and because the two facts that made it look broken — an empty list, and a
+component shared with another route — are both easy to re-investigate.
+
+Covered by `backend/test-quota-page.mjs` (6). Five mutations turn it red: giving
+the wrapper its own fetch, halving the empty-state title, removing the eligibility
+filter, removing the bulk guard, and making `ProviderLimits` accept props. The
+empty-state check counts occurrences rather than matching one, because the title
+appears in both the config and the rendered heading and the first version of that
+assertion passed with only one of them.
+
+
 ### Test suites share one scanner instead of three copies
 
 `walk` and the bracket-matching `batchedWrites` scan existed in two suites after
@@ -443,7 +471,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 286 assertions, 27 suites, all passed |
+| `npm run test` | 292 assertions, 28 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |
