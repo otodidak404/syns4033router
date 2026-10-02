@@ -20,6 +20,7 @@ const SUITES = [
   ["test-api-key-gate.mjs", true],
   ["test-api-key-rehash.mjs", true],
   ["test-route-imports.mjs", false],
+  ["test-ssrf-guard.mjs", true],
   ["test-internal-api-key.mjs", true],
   ["test-skills-route.mjs", true],
   ["test-auth-gate.mjs", true],

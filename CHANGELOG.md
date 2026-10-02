@@ -197,6 +197,44 @@ the way in and passes already-hashed values through.
 migration, accepted after, still accepted after a second run, and a key that was
 never issued is still refused. Suite total is 172 across 13 suites.
 
+### `HEAD` — Close the SSRF on both outbound-fetch routes
+
+A URL that arrives in a request is attacker-controlled input, and fetching it
+verbatim turns the server into a proxy for whatever the server itself can reach —
+the cloud metadata service on `169.254.169.254`, a private range, the
+container's neighbours. Two routes did this:
+
+| Route | Before |
+|---|---|
+| `providers/suggested-models` | `fetch(url)` straight from the query string — no host check, no scheme check |
+| `media-proxy` | hostname allowlist only, no scheme check, and `fetch` following redirects by default |
+
+The second one is the subtler: an allowlisted CDN can answer `302` and the
+request follows it, so a URL that passed the allowlist could still land on
+`169.254.169.254`. Checking the input URL is not enough while redirects are
+followed.
+
+`lib/net/ssrf.js` is now the single decision for both. It checks the scheme
+(http/https only), the host against an exact-or-subdomain allowlist — never a
+substring match, so `evil-replicate.com` cannot pass as `replicate.com` — and
+then resolves the hostname and requires **every** address it returns to be
+public, which is what closes DNS rebinding. Redirects are walked by
+`fetchWithRedirectChecks()` with `redirect: "manual"`, so each hop is rechecked
+against a 3-hop limit.
+
+`suggested-models` now refuses any host outside the catalogue allowlist and
+returns 403. A filter type with no entry in `FETCHER_HOSTS` is refused rather
+than fetched unchecked, and an assertion fails the suite if a filter is added
+without a host — so the list cannot quietly fall behind the catalogue.
+
+23 assertions, including the two that would make the guard useless if they broke:
+an allowlisted host must still pass, and a subdomain of one must pass too. The
+rest cover the metadata address, loopback, the three private ranges, carrier NAT,
+IPv4-mapped IPv6, `file:`/`gopher:`/`data:`, lookalike hosts, and credentials in
+the authority.
+
+Suite total is 199 across 15 suites.
+
 ### Earlier
 
 - `11b580f` — first-boot bootstrap generates and persists the dashboard password
@@ -209,7 +247,7 @@ never issued is still refused. Suite total is 172 across 13 suites.
 
 ## Verification
 
-`npm run test` — **172 assertions, 13 suites, all passed**; `npm run typecheck`
+`npm run test` — **199 assertions, 15 suites, all passed**; `npm run typecheck`
 and `npm run build` exit 0; `hermes verify` OVERALL ok.
 
 | Suite | Assertions |
@@ -224,6 +262,8 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-extract-api-key.mjs` | 13 |
 | `test-api-key-gate.mjs` | 14 |
 | `test-api-key-rehash.mjs` | 12 |
+| `test-route-imports.mjs` | 4 |
+| `test-ssrf-guard.mjs` | 23 |
 | `test-internal-api-key.mjs` | 5 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |

@@ -1,3 +1,5 @@
+import { fetchWithRedirectChecks } from "../../lib/net/ssrf.js";
+
 
 
 // Trusted video/image CDN domains that we allow to proxy
@@ -24,17 +26,6 @@ const ALLOWED_DOMAINS = [
   "minimaxi.com",
 ];
 
-function isAllowedUrl(urlStr) {
-  try {
-    const { hostname } = new URL(urlStr);
-    return ALLOWED_DOMAINS.some(
-      (d) => hostname === d || hostname.endsWith(`.${d}`)
-    );
-  } catch {
-    return false;
-  }
-}
-
 /**
  * GET /api/media-proxy?url=<encoded_url>
  * Server-side proxy for video/image CDN URLs to bypass browser CORS restrictions.
@@ -54,12 +45,13 @@ export async function GET_handler(req, res) {
     return res.status(400).json({ error: "Invalid url encoding" });
   }
 
-  if (!isAllowedUrl(decodedUrl)) {
-    return res.status(403).json({ error: "Domain not allowed" });
-  }
-
   try {
-    const upstream = await fetch(decodedUrl, {
+    // Revalidates the host and resolves it, and does the same for every
+    // redirect hop. The plain fetch this replaced followed redirects straight to
+    // wherever the CDN pointed, so an allowlisted URL could still land on
+    // 169.254.169.254.
+    const upstream = await fetchWithRedirectChecks(decodedUrl, {
+      allowedDomains: ALLOWED_DOMAINS,
       headers: {
         // Forward Range header so browser can seek
         ...(req.headers["range"]
@@ -92,6 +84,11 @@ export async function GET_handler(req, res) {
       headers,
     });
   } catch (err) {
+    // A blocked URL is a 403 from the guard, not an upstream failure — do not
+    // report it as one.
+    if (err?.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error("[media-proxy] Fetch error:", err.message);
     return res.json(
       { error: "Upstream fetch failed" },
