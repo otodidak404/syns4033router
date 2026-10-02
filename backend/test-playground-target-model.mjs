@@ -124,4 +124,57 @@ t("the playground block appears exactly once", () => {
     `${n} copies of the chooser block; a duplicate outside the component blanks the page`);
 });
 
+// tsc does not catch a useState pair that was deleted while its reads and
+// writes stayed: the identifier resolves nowhere and the component throws on
+// first render. Checking the whole file is too weak — the same setter name may
+// legitimately exist in another component — so this is scoped per component.
+t("every state setter a component calls is declared in it", () => {
+  const GLOBALS = new Set(["setTimeout", "setInterval", "setImmediate", "setSelectionRange"]);
+  const components = [...page.matchAll(/function\s+(\w+)\s*\(/g)];
+  const problems = [];
+  components.forEach((c, n) => {
+    const from = c.index + c[0].length;
+    const to = n + 1 < components.length ? components[n + 1].index : page.length;
+    const body = page.slice(from, to);
+
+    const local = new Set();
+    for (const m of body.matchAll(/const\s*\[\s*([A-Za-z_$][\w$]*)\s*,\s*(set[A-Za-z_$][\w$]*)\s*\]/g)) {
+      local.add(m[1]);
+      local.add(m[2]);
+    }
+    for (const m of body.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g)) local.add(m[1]);
+    for (const m of body.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*,/g)) local.add(m[1]);
+    for (const m of body.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(/g)) local.add(m[1]);
+    for (const m of body.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)/g)) local.add(m[1]);
+
+    const used = new Set(
+      [...body.matchAll(/\b(set[A-Z][\w$]*)\s*\(/g)].map(m => m[1])
+    );
+    for (const name of used) {
+      if (GLOBALS.has(name)) continue;
+      // Deliberately no file-wide fallback: a useState declared in a sibling
+      // component is a different binding and resolves to nothing here.
+      if (local.has(name)) continue;
+      problems.push(`${c[1]}: ${name}`);
+    }
+  });
+
+  assert.deepStrictEqual(problems, [],
+    `setters called but not declared in their component: ${problems}`);
+});
+
+t("every identifier the playground reads is declared", () => {
+  const i = page.indexOf("function Playground(");
+  const j2 = page.indexOf("\nfunction ", i + 10);
+  const body = page.slice(i, j2 === -1 ? page.length : j2);
+  const declared = new Set(
+    [...page.matchAll(/(?:const|let|function)\s+([A-Za-z_$][\w$]*)/g)].map(m => m[1])
+  );
+  for (const name of ["catalog", "autoModel", "entryNamesAModel", "runnableModel", "targetModel"]) {
+    assert.ok(new RegExp(`const\\s+(?:\\[[\\s\\S]*?)?\\b${name}\\b`).test(body) ||
+              declared.has(name),
+      `${name} is read in Playground but never declared`);
+  }
+});
+
 console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);

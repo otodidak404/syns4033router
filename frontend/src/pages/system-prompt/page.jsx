@@ -247,6 +247,7 @@ function Playground({ entries, initialEntryId, onLoadAll, activeProviders, model
   // chosen here, and seeded from the entry only when that entry names one.
   const [targetModel, setTargetModel] = useState("");
   const [showModelSelect, setShowModelSelect] = useState(false);
+  const [catalog, setCatalog] = useState([]);
   const [message, setMessage] = useState("");
   const [compare, setCompare] = useState(true);
   const [results, setResults] = useState(null);
