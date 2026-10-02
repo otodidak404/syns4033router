@@ -183,4 +183,34 @@ t("every identifier the playground reads is declared", () => {
   }
 });
 
+// The playground refused prompts over 32k while the routes that store an entry
+// allow 200k, so a prompt that saved could not be tested — which reads as the
+// prompt being broken when only the test button was. The two limits have to
+// match, and that is checked against the constants themselves rather than a
+// copied number, so editing one without the other fails here.
+t("the playground accepts what the store accepts", () => {
+  const limitOf = (file, name) => {
+    const m = fs.readFileSync(file, "utf8").match(new RegExp(`const ${name} = ([\\d_]+);`));
+    assert.ok(m, `${name} not found in ${path.basename(file)}`);
+    return Number(m[1].replace(/_/g, ""));
+  };
+  const playground = limitOf(path.join(HERE, "src/routes/system-prompts/try/route.ts"), "MAX_PROMPT");
+  const create = limitOf(path.join(HERE, "src/routes/system-prompts/route.ts"), "MAX_PROMPT_CHARS");
+  const update = limitOf(path.join(HERE, "src/routes/system-prompts/[id]/route.ts"), "MAX_PROMPT_CHARS");
+
+  assert.ok(playground >= create,
+    `playground takes ${playground.toLocaleString()} but saving takes ${create.toLocaleString()}; ` +
+    "a prompt would save and then refuse to run");
+  assert.strictEqual(playground, update,
+    `playground ${playground.toLocaleString()} and update ${update.toLocaleString()} should agree`);
+});
+
+t("the operator's 33k prompt now fits", () => {
+  const m = fs.readFileSync(path.join(HERE, "src/routes/system-prompts/try/route.ts"), "utf8")
+    .match(/const MAX_PROMPT = ([\d_]+);/);
+  const limit = Number(m[1].replace(/_/g, ""));
+  assert.ok(limit > 33787,
+    `limit ${limit.toLocaleString()} would still reject a 33,787-character prompt`);
+});
+
 console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);

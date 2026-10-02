@@ -19,7 +19,11 @@ import { GLOBAL_TARGET } from "../../../../open-sse/rtk/livePrompt.js";
 export const dynamic = "force-dynamic";
 
 const MAX_MESSAGE = 8000;
-const MAX_PROMPT = 32000;
+// Matches MAX_PROMPT_CHARS on the routes that store an entry, so a prompt that
+// saves is a prompt that can be tested. The two limits drifted apart: a 33k
+// prompt saved fine and then could not be run, which looked like the prompt
+// was broken when only the test button was.
+const MAX_PROMPT = 200_000;
 const TIMEOUT_MS = 90_000;
 
 /** Pull a saved entry by id, or take a draft straight from the request. */
