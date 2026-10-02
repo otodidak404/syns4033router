@@ -114,12 +114,16 @@ export default function CombosPage() {
         delete updated[comboName];
       }
       
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comboStrategies: updated }),
       });
-      
+
+      // A 4xx or 5xx resolves rather than rejects, so the switch used to move
+      // to a round-robin the server never stored.
+      if (!res.ok) throw new Error(`PATCH /api/settings -> ${res.status}`);
+
       setComboStrategies(updated);
     } catch (error) {
       console.log("Error updating combo strategy:", error);

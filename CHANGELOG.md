@@ -3,6 +3,42 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/combos` — a combo posted with a string instead of a list called one character at a time
+
+`getRotatedModels` reads `models.length` and spreads the list into a new array. A
+string satisfies both: `"oc/space-bunny-free".length` is 20 and `[...str]` yields
+its characters. `POST /api/combos` validated the name and never looked at
+`models`, so it answered 201 and stored the string. Calling that combo:
+
+```
+models: "oc/space-bunny-free"   →  tries "o", "c", "/"  →  "o" resolves to openai
+HTTP 404  {"error":{"message":"No active credentials for provider: openai"}}
+```
+
+The error names a provider the operator never configured, which is the part that
+costs time. `[123, null, {x:1}]` was stored just as readily.
+
+`validateModels` now refuses a non-array and any entry that is not a non-empty
+string, on both the create and the update route. An absent `models` field is
+still fine — that is the empty combo — and the name rules are untouched.
+
+### `/dashboard/combos` — the round-robin switch moved before the save
+
+`handleToggleRoundRobin` awaited a `PATCH /api/settings` and never looked at the
+response, then set state. A 4xx or 5xx resolves rather than rejects, so a
+rejected save left the toggle showing a round-robin the server never stored. It
+now throws on a non-ok response, which the existing catch already handles.
+
+Also checked and left alone: fallback across the 16-model `JB` combo works —
+consecutive calls land on different models — and a request that exhausts the
+list can exceed 60s, which is the fallback walking it, not a hang.
+
+Covered by `backend/test-combos-page.mjs` (7), which executes `validateModels`
+rather than only matching it. Six mutations turn it red, including removing the
+`Array.isArray` check, un-calling the validator from either route, dropping the
+string test, and restoring the optimistic toggle.
+
+
 ### `/dashboard/system-prompt` — every failed run reported the same unusable message
 
 A model that does not exist, a model that exists but has no key, and a provider
@@ -365,7 +401,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 276 assertions, 25 suites, all passed |
+| `npm run test` | 283 assertions, 26 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

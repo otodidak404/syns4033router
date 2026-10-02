@@ -6,6 +6,25 @@ export const dynamic = "force-dynamic";
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
+// A combo's models list is walked with .length and spread into a new array. A
+// string satisfies both — "oc/space-bunny-free".length is 20 and [...str] yields
+// its characters — so a caller that posted models as a string instead of a list
+// got a combo that tries to call "o", "c" and "/" as model names, and the error
+// names a provider nobody configured. Coerce nothing; refuse it.
+function validateModels(models) {
+  if (models === undefined || models === null) return { ok: true };
+  if (!Array.isArray(models)) {
+    return { ok: false, error: "models must be an array of model names" };
+  }
+  for (const m of models) {
+    if (typeof m !== "string" || !m.trim()) {
+      return { ok: false, error: "every entry in models must be a non-empty string" };
+    }
+  }
+  return { ok: true };
+}
+
+
 // GET /api/combos - Get all combos
 export async function GET(req, res) {
   try {
@@ -30,6 +49,11 @@ export async function POST_handler(req, res) {
     // Validate name format
     if (!VALID_NAME_REGEX.test(name)) {
       return res.status(400).json({ error: "Name can only contain letters, numbers, -, _ and ." });
+    }
+
+    const modelsCheck = validateModels(models);
+    if (!modelsCheck.ok) {
+      return res.status(400).json({ error: modelsCheck.error });
     }
 
     // Check if name already exists
