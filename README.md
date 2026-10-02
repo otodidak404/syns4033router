@@ -334,6 +334,21 @@ Additional skills are available in [`skills/`](./skills/).
 ---
 
 
+### Verifying a fresh clone
+
+```bash
+npm install && npm run build && npm run typecheck && npm run test
+```
+
+With [Hermes](https://hermes-agent.nousresearch.com), save the recipe once so the
+readiness poll targets the right port — auto-detection cannot find it, because
+`server.ts` reads `PORT` and falls back to `3001`:
+
+```bash
+hermes verify --save --port 3001     # writes .hermes/environment.json (gitignored)
+hermes verify                        # ok: true, readiness 200 on /api/health
+```
+
 ## License and Attribution
 
 This project is licensed under the MIT License. See [`LICENSE`](./LICENSE).

@@ -3,6 +3,26 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### Verification config: the readiness poll targeted a port this app never opens
+
+`hermes verify` failed readiness with `connection refused` on
+`http://127.0.0.1:8000/`, while every command phase had exited 0. Auto-detection
+sets `port: null` and falls back to 8000, but `backend/src/server.ts` is
+`Number(process.env.PORT) || 3001`, and vite and nginx both proxy to 3001.
+
+The port was left alone — changing it to satisfy the harness would ripple through
+vite.config.ts and nginx.conf for no product gain. Instead `.hermes/environment.json`
+records port 3001 and readiness `/api/health`; `/` and `/health` both fall through
+to the SPA index, so they would report ready for anything.
+
+`.hermes/` stays gitignored: it is per-machine tooling state, not template
+content. A fresh clone runs `hermes verify --save --port 3001` once, documented in
+the README.
+
+`backend/.env.example` also said `PORT=20128`, matching nothing in the repo — the
+code, vite and nginx all say 3001. Corrected.
+
+
 ### `/dashboard/docs` — the page told operators to call the wrong endpoint for video
 
 The page is an iframe around a 253 KB static HTML file, so there is no flow logic
