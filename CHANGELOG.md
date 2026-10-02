@@ -3,6 +3,27 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/endpoint` — Tailscale install crashed on an empty request body
+
+`express.json()` has already consumed and parsed the stream by the time a handler
+runs, so `req.body` is a plain object. `POST /api/tunnel/tailscale-install` called
+`req.body.catch(...)` as if it were still a promise, which threw a `TypeError`
+before the handler did any work:
+
+```
+500  POST /api/tunnel/tailscale-install  {"error":"req.body.catch is not a function"}
+```
+
+`routes/auth/oidc/test/route.ts` had the same line. Both now read
+`req.body || {}`. This is the same class of defect that broke
+`/api/system-prompts/try` earlier, so `backend/test-req-body-parsed.mjs` now walks
+every file under `backend/src` and fails if `req.body` is treated as a promise
+anywhere, rather than waiting for the next one to be clicked.
+
+Found while verifying the tunnel fix: the spawn crash was gone, and the request
+that used to kill the process then returned a real error — which exposed this.
+
+
 
 ### `/dashboard/endpoint` — clicking Tailscale took the whole server down
 
@@ -276,11 +297,11 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 260 assertions, 22 suites, all passed |
+| `npm run test` | 264 assertions, 23 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |
-| `/api/tunnel/tailscale-*` after | 200, process alive |
+| `/api/tunnel/tailscale-*` after | 200 / 500 with a real message, process alive on 4/4 checks |
 | live toggle round-trip | `cavemanEnabled`, `cavemanLevel`, `requireApiKey`, `rtkEnabled`, `tunnelDashboardAccess` all persist |
 
 `PATCH /api/settings` accepts an unknown key and an out-of-range `cavemanLevel`

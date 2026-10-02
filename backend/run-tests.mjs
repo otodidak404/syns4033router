@@ -31,6 +31,7 @@ const SUITES = [
   ["test-auth-gate.mjs", true],
   ["test-tunnel-spawn-guard.mjs", false],
   ["test-endpoint-page.mjs", false],
+  ["test-req-body-parsed.mjs", false],
 ];
 
 let failed = 0;

@@ -15,7 +15,7 @@ function hasBrew() {
 }
 
 export async function POST_handler(req, res) {
-  const body = req.body.catch(() => ({}));
+  const body = req.body || {};
   const platform = os.platform();
   const isWindows = platform === "win32";
   const isBrew = platform === "darwin" && hasBrew();

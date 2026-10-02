@@ -18,7 +18,7 @@ export async function POST_handler(req, res) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const body = req.body.catch(() => ({}));
+    const body = req.body || {};
     const settings = await getSettings();
 
     const issuerUrl = String(body.issuerUrl || settings.oidcIssuerUrl || "").trim();
