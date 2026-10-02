@@ -357,10 +357,15 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                                   });
                                   if (res.ok) {
                                     setActiveModel("");
+                                    setMessage(null);
                                     checkStatus();
+                                  } else {
+                                    const detail = await res.text().catch(() => "");
+                                    setMessage({ type: "error", text: `Clearing the active model failed (${res.status})${detail ? `: ${detail.slice(0, 120)}` : ""}` });
                                   }
                                 } catch (error) {
                                   console.log("Error clearing active model:", error);
+                                  setMessage({ type: "error", text: "Could not reach the server to clear the active model." });
                                 }
                               } else {
                                 setActiveModel(model);
@@ -386,10 +391,15 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                                     if (activeModel === model) {
                                       setActiveModel("");
                                     }
+                                    setMessage(null);
                                     checkStatus();
+                                  } else {
+                                    const detail = await res.text().catch(() => "");
+                                    setMessage({ type: "error", text: `Removing ${model} failed (${res.status})${detail ? `: ${detail.slice(0, 120)}` : ""}` });
                                   }
                                 } catch (error) {
                                   console.log("Error removing model:", error);
+                                  setMessage({ type: "error", text: "Could not reach the server to remove the model." });
                                 }
                               }}
                               className="ml-0.5 hover:text-red-500"

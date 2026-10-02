@@ -156,6 +156,59 @@ t("every cli-tools card that writes checks the response", () => {
   assert.equal(offenders.length, 0, "writes whose result is discarded:\n       " + offenders.join("\n       "));
 });
 
+t("no write on this page has only a success path", () => {
+  // A status check that only handles the happy branch is not a check. The state
+  // here is not lying — it only advances when the write succeeded — but the
+  // operator clicks the ✗ on a model chip and nothing at all happens.
+  //
+  // Two shapes count as covered, and they are covered differently:
+  //   if (!res.ok) { ... }   the block IS the failure path; no else needed
+  //   if (res.ok)  { ... } else { ... }   needs the else
+  // A third shape assigns to a variable declared outside the statement and tests
+  // it further down — MitmServerCard builds `res` across a three-way branch — so
+  // the check is looked up from the enclosing handler rather than the statement.
+  const silent = [];
+  for (const f of walk(CARDS)) {
+    const src = fs.readFileSync(f, "utf8");
+    for (const m of src.matchAll(/method:\s*"(PUT|POST|PATCH|DELETE)"/g)) {
+      const start = src.lastIndexOf("fetch(", m.index);
+      if (start === -1) continue;
+      let d = 0, k = src.indexOf("(", start);
+      while (k < src.length) {
+        if (src[k] === "(") d++;
+        else if (src[k] === ")") { d--; if (d === 0) break; }
+        k++;
+      }
+      const stmtEnd = src.indexOf(";", k);
+      const ln = src.slice(0, m.index).split("\n").length;
+      const tail = src.slice(stmtEnd, stmtEnd + 1400);
+
+      const failFirst = tail.match(/if \(!res\.ok\)\s*\{/);
+      if (failFirst) continue;                       // covered by construction
+
+      const okFirst = tail.match(/if \(res\.ok\)\s*\{/);
+      if (okFirst) {
+        let d2 = 0, j = tail.indexOf("{", okFirst.index);
+        while (j < tail.length) {
+          if (tail[j] === "{") d2++;
+          else if (tail[j] === "}") { d2--; if (d2 === 0) break; }
+          j++;
+        }
+        const rest = tail.slice(j + 1, j + 120).trim();
+        if (rest.startsWith("else") || /^if \(/.test(rest)) continue;
+        silent.push(`${path.basename(f)}:${ln}  success branch only, nothing on failure`);
+        continue;
+      }
+
+      // res built across branches: look for any status test in the handler
+      const handler = tail.slice(0, tail.indexOf("\n  };") === -1 ? 1400 : tail.indexOf("\n  };"));
+      if (/res\.ok|res\.status|expectOk/.test(handler)) continue;
+      silent.push(`${path.basename(f)}:${ln}  no status check at all`);
+    }
+  }
+  assert.equal(silent.length, 0, "writes with no failure path:\n       " + silent.join("\n       "));
+});
+
 t("the page still reads every endpoint it declares", () => {
   const declared = new Set();
   for (const f of walk(CARDS)) {

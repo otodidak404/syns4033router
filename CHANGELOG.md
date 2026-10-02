@@ -3,6 +3,35 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/cli-tools` — two more silent failures, found by asking the wrong question first
+
+The suite asked "does this write check the response?" and all thirty-eight passed.
+That was not the question. Checking `res.ok` and doing nothing when it is false is
+still a silent failure, so a second assertion asks whether the *failure path*
+exists at all:
+
+- `OpenCodeToolCard` — clearing the active model and removing a model each did
+  `if (res.ok) { ...update... }` with no else. The state here is not lying, since
+  it only advances when the write succeeded, but clicking the ✗ on a model chip
+  did nothing and said nothing. Both now report the status and the body.
+
+Getting that assertion right took three tries, each time because it flagged
+something that was already covered. It looked for an `else` after `if (res.ok)`
+without recognising that `if (!res.ok) { ...; return; }` is covered by
+construction — the block *is* the failure path. And `MitmServerCard` builds `res`
+across a three-way branch and tests it twenty-five lines later, so the lookup has
+to start from the enclosing handler, not the statement. The first version of this
+also reported twenty-eight "silent" writes that were all fine.
+
+Counting the writes on this page directly, rather than trusting the window scan
+that produced three false positives and three false negatives earlier, is what
+made the two real ones visible.
+
+Covered by `backend/test-cli-tools-page.mjs` (10). Four mutations on top of the
+six already there, including removing each of the two new else branches, one from
+a card that was already correct, and replacing a status check with `if (true)`.
+
+
 ### What the suite can and cannot catch, recorded after it failed to
 
 Adding `saveError` to `MitmToolCard` and `error` to `translator` was done with
@@ -584,7 +613,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 312 assertions, 30 suites, all passed |
+| `npm run test` | 313 assertions, 30 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |
