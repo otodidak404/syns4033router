@@ -49,7 +49,15 @@ export async function GET_handler(req, res) {
   }
 
   try {
-    const fetchRes = await fetchWithRedirectChecks(url, { allowedDomains });
+    const fetchRes = await fetchWithRedirectChecks(url, {
+      allowedDomains,
+      headers: {
+        // Upstream Cloudflare answers a request with no User-Agent at all with
+        // 403 (error code 1010), which silently emptied this catalogue. Sending
+        // a real one identifies the caller instead.
+        "User-Agent": "SYNS4033ROUTER/3.0 (+model discovery)",
+      },
+    });
     if (!fetchRes.ok) {
       return res.json({ data: [] });
     }

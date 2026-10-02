@@ -235,12 +235,23 @@ export const PROVIDER_MODELS = {
     { id: "minimax-m2.7", name: "MiniMax M2.7", targetFormat: "claude" },
     { id: "minimax-m2.5", name: "MiniMax M2.5", targetFormat: "claude" },
   ],
-  oc: [  // OpenCode
-    // { id: "nemotron-3-super-free", name: "Nemotron 3 Super" },
-    // { id: "qwen3.6-plus-free", name: "Qwen 3.6 Plus" },
-    // { id: "big-pickle", name: "Big Pickle", targetFormat: "claude" },
-    // { id: "minimax-m2.5-free", name: "MiniMax M2.5", targetFormat: "claude" },
-    // { id: "trinity-large-preview-free", name: "Trinity Large Preview" },
+  oc: [  // OpenCode Free — no provider key required
+    // Ids come from OpenCode's own catalogue at
+    // https://opencode.ai/zen/v1/models. The previous list here was
+    // commented out because every id in it was gone upstream, which left
+    // the provider with no models at all in every picker and in /v1/models.
+    { id: "deepseek-v4-flash-free", name: "Deepseek V4 Flash (Free)" },
+    { id: "fledge-alpha-free", name: "Fledge Alpha (Free)" },
+    { id: "jev-1.13-free", name: "Jev 1.13 (Free)" },
+    { id: "ling-3.0-flash-fin-free", name: "Ling 3.0 Flash (Free)" },
+    { id: "longcat-2.5-preview-free", name: "Longcat 2.5 Preview (Free)" },
+    { id: "mimo-v2.5-free", name: "Mimo V2.5 (Free)" },
+    { id: "mimo-v2.6-flash-free", name: "Mimo V2.6 Flash (Free)" },
+    { id: "muse-spark-1.2-contributor-free", name: "Muse Spark 1.2 Contributor (Free)" },
+    { id: "muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 Contributor (Free)" },
+    { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra (Free)" },
+    { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning (Free)" },
+    { id: "space-bunny-free", name: "Space Bunny (Free)" },
   ],
 
   cl: [  // Cline

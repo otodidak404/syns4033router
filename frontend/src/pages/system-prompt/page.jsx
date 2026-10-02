@@ -236,7 +236,7 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
 
 // ── Playground ─────────────────────────────────────────────────────────────
 
-function Playground({ entries, initialEntryId, onLoadAll }) {
+function Playground({ entries, initialEntryId, onLoadAll, activeProviders, modelAliases }) {
   const [selectedId, setSelectedId] = useState(initialEntryId || (entries[0]?.id ?? ""));
   const [input, setInput] = useState("");
   // The entry's own model cannot be the test target: a global entry carries the
@@ -245,6 +245,7 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
   // empty reply — the same thing a broken prompt looks like. So the target is
   // chosen here, and seeded from the entry only when that entry names one.
   const [targetModel, setTargetModel] = useState("");
+  const [showModelSelect, setShowModelSelect] = useState(false);
   const [message, setMessage] = useState("");
   const [compare, setCompare] = useState(true);
   const [results, setResults] = useState(null);
@@ -332,10 +333,17 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
               placeholder="Model to test against — e.g. oc/space-bunny-free"
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs text-text-main outline-none focus:border-primary"
             />
-            <p className="text-[11px] text-text-muted">
-              This entry targets every model, so there is nothing to run it on by
-              itself. Name one model to test it against.
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="secondary" icon="search"
+                onClick={() => setShowModelSelect(true)}>
+                Pilih dari katalog
+              </Button>
+              <span className="text-[11px] text-text-muted">
+                This entry targets every model, so there is nothing to run it on by
+                itself. Pick one model to test it against — or type an id the
+                catalogue does not carry.
+              </span>
+            </div>
           </div>
         )}
         <textarea
@@ -365,6 +373,16 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
           </label>
         </div>
       </div>
+
+      <ModelSelectModal
+        isOpen={showModelSelect}
+        onClose={() => setShowModelSelect(false)}
+        onSelect={(m) => { setTargetModel(m.value); setError(""); setShowModelSelect(false); }}
+        activeProviders={activeProviders}
+        modelAliases={modelAliases}
+        title="Model to test against"
+        closeOnSelect
+      />
 
       {error && (
         <p className="rounded-lg border border-red-500/40 bg-red-500/10 p-2.5 text-xs text-red-400">
@@ -588,6 +606,8 @@ export default function SystemPromptPage() {
       ) : (
         <Playground
           entries={entries}
+          activeProviders={activeProviders}
+          modelAliases={modelAliases}
           initialEntryId={playgroundSeed}
           onLoadAll={() => {
             const live = entries.filter(e => e.isActive && e.isLive);
