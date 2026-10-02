@@ -80,6 +80,12 @@ t("a global entry gets a model chosen for it, not one demanded", () => {
     "the playground must choose a model for a global entry");
   assert.ok(/id\.startsWith\("oc\/"\)/.test(page),
     "the default must prefer a provider that runs with no provider key");
+  assert.ok(/RESPONDING_FREE_MODELS/.test(page),
+    "the first oc/* id is not necessarily one that answers, so the default must " +
+    "come from a measured list");
+  assert.ok(/RESPONDING_FREE_MODELS\.find\(id => ids\.includes\(id\)\)/.test(page),
+    "the preference must still be gated on the catalogue, or an empty catalogue " +
+    "yields an id the picker cannot show");
   // The phrase survives as the picker's modal title, so what matters is that no
   // input asks the operator to supply the id.
   const demandsAnId = /placeholder="[^"]*(?:e\.g\.|\.\/|name provider|type)[^"]*"/i.test(page)

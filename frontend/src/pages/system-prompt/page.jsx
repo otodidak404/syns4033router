@@ -237,6 +237,11 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
 
 // ── Playground ─────────────────────────────────────────────────────────────
 
+// Free OpenCode models observed to answer on a live deployment. The provider's
+// own catalogue lists several ids that return 403/400/500 upstream, so the
+// listing alone is not evidence a model runs — this is measured, not copied.
+const RESPONDING_FREE_MODELS = ["oc/space-bunny-free"];
+
 function Playground({ entries, initialEntryId, onLoadAll, activeProviders, modelAliases }) {
   const [selectedId, setSelectedId] = useState(initialEntryId || (entries[0]?.id ?? ""));
   const [input, setInput] = useState("");
@@ -281,11 +286,19 @@ function Playground({ entries, initialEntryId, onLoadAll, activeProviders, model
   // oc/* is the OpenCode Free provider, declared noAuth: it runs with no provider
   // key, so a default chosen from it works on a fresh install where nothing else
   // is configured yet.
+  //
+  // Not every id the provider lists actually answers. Measured against this
+  // deployment, space-bunny-free replies and the rest of its free list returns
+  // 400, 403 or 500 upstream — so taking the first oc/* id picks a model that
+  // cannot run, which is the worst possible default. The preference list is
+  // ordered by what has been observed to respond, and anything still falls
+  // through to the catalogue so the picker is never empty.
   const autoModel = useMemo(() => {
     const ids = catalog
       .map(m => m.fullModel || (m.provider && m.model ? `${m.provider}/${m.model}` : null))
       .filter(Boolean);
-    return ids.find(id => id.startsWith("oc/")) || ids[0] || "";
+    const known = RESPONDING_FREE_MODELS.find(id => ids.includes(id));
+    return known || ids.find(id => id.startsWith("oc/")) || ids[0] || "";
   }, [catalog]);
 
   const runnableModel = (entryNamesAModel ? selected.model : "") || targetModel.trim() || autoModel;
