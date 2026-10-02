@@ -235,6 +235,24 @@ the authority.
 
 Suite total is 199 across 15 suites.
 
+**One open discrepancy, unresolved.** Three hosts that are in the allowlist —
+`weavy.ai`, `runwayml.com`, `minimaxi.com` — are refused by the running server
+with `Domain not allowed`, 5/5 identical attempts, while `replicate.com`,
+`v3b.fal.media`, `storage.googleapis.com` and `hailuoai.com` from the same list
+return 200. The cause is not identified. What was ruled out: the allowlist is
+byte-identical between the initial commit and HEAD (20 entries, none added or
+removed); the deployed source matches the repo; the server is running this
+commit, since the new `suggested-models` message appears; `dist/` is untracked so
+the image cannot carry a stale build; and all four hosts resolve to public
+addresses via `dns.lookup` with the same options the guard uses. Calling
+`checkFetchableUrl` locally against that exact source returns `ok: true` for all
+three.
+
+The direction of the failure is fail-closed, so this is a functional bug rather
+than a hole: media for those three providers will not proxy. Left visible rather
+than papered over, because guessing at a cause here would be worse than the
+known state.
+
 ### Earlier
 
 - `11b580f` — first-boot bootstrap generates and persists the dashboard password
