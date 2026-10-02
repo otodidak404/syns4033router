@@ -27,6 +27,7 @@ export default function MitmToolCard({
   onDnsChange,
 }) {
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [warning, setWarning] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [sudoPassword, setSudoPassword] = useState("");
@@ -53,14 +54,28 @@ export default function MitmToolCard({
     } catch { /* ignore */ }
   };
 
+  // This one was `catch { /* ignore */ }`. A model mapping is what redirects an
+  // intercepted IDE request to a provider, so a save that silently failed left
+  // the card claiming a mapping that was not in force — the hardest kind of
+  // wrong to notice, because traffic kept flowing to the old target.
   const saveMappings = useCallback(async (mappings) => {
     try {
-      await fetch("/api/cli-tools/antigravity-mitm/alias", {
+      const res = await fetch("/api/cli-tools/antigravity-mitm/alias", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tool: tool.id, mappings }),
       });
-    } catch { /* ignore */ }
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        setSaveError(`Saving the mapping failed (${res.status})${detail ? `: ${detail.slice(0, 120)}` : ""}`);
+        return false;
+      }
+      setSaveError(null);
+      return true;
+    } catch (error) {
+      setSaveError("Could not reach the server to save the mapping.");
+      return false;
+    }
   }, [tool.id]);
 
   const handleMappingBlur = (alias, value) => {
@@ -251,6 +266,16 @@ export default function MitmToolCard({
                   <span className="material-symbols-outlined text-[16px]">play_circle</span>
                   Start DNS
                 </button>
+              )}
+
+              {/* Save failure below the button, in the same shape as the warning
+                  above it. A mapping that did not persist is not a warning: the
+                  card would otherwise show a redirect that is not in force. */}
+              {saveError && (
+                <div className="flex items-start gap-2 px-2 py-1.5 rounded text-xs text-red-500 bg-red-500/10">
+                  <span className="material-symbols-outlined text-[14px] shrink-0">error</span>
+                  <span>{saveError}</span>
+                </div>
               )}
 
               {/* Warning below button */}

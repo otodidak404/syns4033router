@@ -27,6 +27,7 @@ const EDITOR_OPTIONS = {
 
 export default function TranslatorPage() {
   const [contents, setContents] = useState({});
+  const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState({ 1: true });
   const [loading, setLoading] = useState({});
   // Detected from step 1: { provider, model, sourceFormat, targetFormat }
@@ -71,16 +72,44 @@ export default function TranslatorPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step: 1, body })
       });
-      const data = await res.json();
-      if (data.success) setMeta(data.result);
-    } catch { /* ignore */ }
+      const data = await res.json().catch(() => ({}));
+      // A 400 or 500 resolves with no `success`, so the previous version simply
+      // did nothing and said nothing — the operator typed a model and watched
+      // nothing happen.
+      if (!res.ok || !data.success) {
+        setError(
+          (data.error || `Metadata detection failed (${res.status})`).toString().slice(0, 160),
+        );
+        return;
+      }
+      setError(null);
+      setMeta(data.result);
+    } catch {
+      setError("Could not reach the server to detect the model metadata.");
+    }
   };
 
-  const save = (file, content) => fetch("/api/translator/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file, content })
-  }).catch(() => {});
+  // This wrote the file and threw the result away, so a rejected save looked
+  // exactly like a successful one and the content was simply lost.
+  const save = async (file, content) => {
+    try {
+      const res = await fetch("/api/translator/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file, content }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError((data.error || `Saving failed (${res.status})`).toString().slice(0, 160));
+        return false;
+      }
+      setError(null);
+      return true;
+    } catch {
+      setError("Could not reach the server to save the file.");
+      return false;
+    }
+  };
 
   // Step 1 → Step 3: source → OpenAI intermediate
   const handleToOpenAI = async () => {
@@ -210,6 +239,15 @@ export default function TranslatorPage() {
 
   return (
     <div className="p-8 space-y-3">
+      {/* A save or a metadata detection that failed without saying so was the
+          worst shape this page had: the file looked written and was not. */}
+      {error && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+          <span className="material-symbols-outlined text-[16px] shrink-0">error</span>
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div>

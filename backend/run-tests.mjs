@@ -38,6 +38,7 @@ const SUITES = [
   ["test-usage-page.mjs", false],
   ["test-quota-page.mjs", false],
   ["test-mitm-page.mjs", false],
+  ["test-cli-tools-page.mjs", false],
 ];
 
 let failed = 0;

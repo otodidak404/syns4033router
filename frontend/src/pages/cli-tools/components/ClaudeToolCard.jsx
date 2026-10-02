@@ -74,14 +74,30 @@ export default function ClaudeToolCard({
     }).catch(() => {});
   }, []);
 
+  // The switch moved before the save, and a 4xx or 5xx resolves rather than
+  // rejects, so the old `.catch(() => {})` left it showing a setting the server
+  // never took.
   const handleCcFilterNamingToggle = async (e) => {
     const value = e.target.checked;
+    const previous = ccFilterNaming;
     setCcFilterNaming(value);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ccFilterNaming: value }),
-    }).catch(() => {});
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ccFilterNaming: value }),
+      });
+      if (!res.ok) {
+        setCcFilterNaming(previous);
+        const detail = await res.text().catch(() => "");
+        setMessage({ type: "error", text: `Saving this setting failed (${res.status})${detail ? `: ${detail.slice(0, 120)}` : ""}` });
+      } else {
+        setMessage(null);
+      }
+    } catch {
+      setCcFilterNaming(previous);
+      setMessage({ type: "error", text: "Could not reach the server to save this setting." });
+    }
   };
 
   const fetchModelAliases = async () => {

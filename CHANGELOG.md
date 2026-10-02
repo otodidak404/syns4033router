@@ -3,6 +3,72 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### What the suite can and cannot catch, recorded after it failed to
+
+Adding `saveError` to `MitmToolCard` and `error` to `translator` was done with
+a regex over `useState(`, which stopped before the default value, so the
+declaration landed mid-expression:
+
+```
+const [loading, setLoading] = useState(
+const [saveError, setSaveError] = useState(null);false);
+```
+
+`npm run test` passed — 312 assertions, all suites — with both files broken.
+Every suite here reads source text rather than compiling it, so a syntactically
+invalid file satisfies "the declaration exists" as easily as a valid one. Only
+`tsc` caught it.
+
+That is not a defect in the tests, it is their scope, and it is why verification
+runs `npm run test` *and* `npm run typecheck` *and* `npm run build` rather than
+treating the suite as sufficient. Recorded so nobody reads a green suite as a
+green build.
+
+
+### `/dashboard/cli-tools` — three writes that could fail in silence
+
+fetch() rejects only on a network error; a 400 or 500 is an ordinary response
+that resolves. Three writers on this page discarded it:
+
+- `MitmToolCard.saveMappings` had `catch { /* ignore */ }`. A model mapping is
+  what redirects an intercepted IDE request to a provider, so a save that failed
+  left the card showing a redirect that was not in force while traffic kept going
+  to the old target — and nothing was logged either.
+- `OpenCodeToolCard.saveModels` — the modal closes and the list is already in
+  local state before the POST is sent.
+- `CopilotToolCard.saveModels` — the same, near-identical to the OpenCode one.
+
+All three now read the status, restore what was there before, and say what
+happened. `ClaudeToolCard`'s naming toggle was the same shape one component over
+(`setCcFilterNaming(value)` then `await fetch(...).catch(() => {})`) and is fixed
+too.
+
+### `/dashboard/translator` — a save that wrote the file and threw the result away
+
+Found by the repo-wide scan in `test-cli-tools-page.mjs` rather than by reading
+the page, which is the point of the scan:
+
+```js
+const save = (file, content) => fetch("/api/translator/save", {...}).catch(() => {});
+```
+
+A rejected save was indistinguishable from a successful one and the content was
+lost. `detectMeta` on the same page was quieter still: it read `data.success` and
+did nothing when it was false, wrapped in `catch { /* ignore */ }`. Both now
+report the failure and the page has an error banner — the state did not exist, so
+one was added, and the first version of the fix set an error that was never
+rendered, which is the same silence in a new shape.
+
+Covered by `backend/test-cli-tools-page.mjs` (9), which scans every writer under
+`frontend/src/pages/cli-tools` rather than the ones in view. Six mutations turn it
+red, and each caught a real gap in the test rather than in the code: the OpenCode
+rollback exists on two paths and the first assertion passed with one removed;
+ClaudeToolCard and the translator had no assertion at all; and the window used to
+find the status check had `indexOf` returning -1, where `-1 + 4` is truthy so the
+fallback never fired and the window collapsed, flagging writes that do check three
+lines later.
+
+
 ### `/dashboard/mitm` — intercepted credentials were being written to disk in the clear
 
 The MITM dump files are a debugging aid. `dumpRequest` wrote
@@ -518,7 +584,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 303 assertions, 29 suites, all passed |
+| `npm run test` | 312 assertions, 30 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

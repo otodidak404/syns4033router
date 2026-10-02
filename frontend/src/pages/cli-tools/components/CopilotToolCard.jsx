@@ -62,18 +62,32 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
     }
   };
 
+  // The model list moves in local state before this runs, and a 4xx or 5xx
+  // resolves rather than rejects — so without reading the status a rejected save
+  // left the card showing a list the server never took.
   const saveModels = async (models) => {
+    const previous = selectedModels;
     try {
       const keyToUse = (selectedApiKey && selectedApiKey.trim())
         ? selectedApiKey
         : (!cloudEnabled ? "sk_9router" : selectedApiKey);
-      await fetch("/api/cli-tools/copilot-settings", {
+      const res = await fetch("/api/cli-tools/copilot-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ baseUrl: getEffectiveBaseUrl(), apiKey: keyToUse, models }),
       });
+      if (!res.ok) {
+        setSelectedModels(previous);
+        const detail = await res.text().catch(() => "");
+        setMessage({ type: "error", text: `Saving the model list failed (${res.status})${detail ? `: ${detail.slice(0, 120)}` : ""}` });
+        return false;
+      }
+      setMessage(null);
+      return true;
     } catch (error) {
-      console.log("Error saving models:", error);
+      setSelectedModels(previous);
+      setMessage({ type: "error", text: "Could not reach the server to save the model list." });
+      return false;
     }
   };
 

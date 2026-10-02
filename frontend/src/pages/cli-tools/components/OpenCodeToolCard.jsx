@@ -72,13 +72,18 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
     }
   };
 
+  // onSelect moves selectedModels straight away and onClose fires this without
+  // awaiting, so a rejected write left the card showing a model list the server
+  // never took. A 4xx or 5xx resolves rather than rejects, so the status has to be
+  // read, and the previous selection restored when it was not ok.
   const saveModels = async (models) => {
+    const previous = { models: selectedModels, activeModel };
     try {
       const keyToUse = (selectedApiKey && selectedApiKey.trim())
         ? selectedApiKey
         : (!cloudEnabled ? "sk_9router" : selectedApiKey);
       const validActiveModel = models.includes(activeModel) ? activeModel : (models[0] || "");
-      await fetch("/api/cli-tools/opencode-settings", {
+      const res = await fetch("/api/cli-tools/opencode-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -89,8 +94,20 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
           subagentModel,
         }),
       });
+      if (!res.ok) {
+        setSelectedModels(previous.models);
+        setActiveModel(previous.activeModel);
+        const detail = await res.text().catch(() => "");
+        setMessage({ type: "error", text: `Saving the model list failed (${res.status})${detail ? `: ${detail.slice(0, 120)}` : ""}` });
+        return false;
+      }
+      setMessage(null);
+      return true;
     } catch (error) {
-      console.log("Error saving models:", error);
+      setSelectedModels(previous.models);
+      setActiveModel(previous.activeModel);
+      setMessage({ type: "error", text: "Could not reach the server to save the model list." });
+      return false;
     }
   };
 
