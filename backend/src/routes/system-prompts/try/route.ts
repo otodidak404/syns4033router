@@ -36,24 +36,46 @@ async function resolvePrompt(entryId, draft) {
  * answer as a single object or as an SSE stream, and this route does not care
  * which — only the text matters.
  */
+function textFromJson(j) {
+  return j?.choices?.[0]?.message?.content
+    ?? j?.choices?.[0]?.delta?.content
+    ?? j?.content?.[0]?.text
+    ?? j?.candidates?.[0]?.content?.parts?.[0]?.text
+    ?? "";
+}
+
 function extractText(raw) {
   if (!raw) return "";
   const text = typeof raw === "string" ? raw : JSON.stringify(raw);
-  if (!text.includes("data:")) {
+
+  // A JSON body can arrive with an SSE terminator welded onto its tail:
+  //
+  //   {"id":"...","choices":[...]}data: [DONE]\n\n
+  //
+  // — no newline between the closing brace and the frame. So the mere presence of
+  // "data:" does not mean the body is a stream; only lines that *begin* with it
+  // are frames. Testing with includes() sent every such body down the SSE path,
+  // where the one JSON line did not start with "data:" and the only frame that
+  // did was [DONE] — so every run reported an empty reply.
+  //
+  // Both readings are attempted, JSON first, because a stream is much rarer than
+  // a JSON body carrying a terminator.
+  for (const candidate of [text, text.slice(0, text.lastIndexOf("}") + 1)]) {
+    const head = candidate.trim();
+    if (!head.startsWith("{")) continue;
     try {
-      const j = JSON.parse(text);
-      return j?.choices?.[0]?.message?.content ?? j?.content?.[0]?.text ?? "";
-    } catch { return ""; }
+      const out = textFromJson(JSON.parse(head));
+      if (out) return out;
+    } catch { /* not this shape — try the next reading */ }
   }
+
   const parts = [];
   for (const line of text.split("\n")) {
     if (!line.startsWith("data:")) continue;
     const payload = line.slice(5).trim();
     if (!payload || payload === "[DONE]") continue;
     try {
-      const j = JSON.parse(payload);
-      const c = j?.choices?.[0];
-      parts.push(c?.delta?.content ?? c?.message?.content ?? "");
+      parts.push(textFromJson(JSON.parse(payload)));
     } catch { /* a partial frame is not worth failing the whole run over */ }
   }
   return parts.join("");
