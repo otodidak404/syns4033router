@@ -520,9 +520,9 @@
           </div>
           <div class="endpoint-body">
             <p class="endpoint-desc">
-              Generate images or videos. For video models (RunwayML, Leonardo, Weavy video models),
-              the response uses the same format but the <code>url</code> fields point to video files.
-              This endpoint handles all image and video generation requests.
+              Generate images. For video use <code>POST /v1/video/generations</code>, which is
+              documented below — this endpoint routes to the image handler and does not serve
+              video models.
             </p>
             <table class="param-table">
               <thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
@@ -598,7 +598,38 @@
           </div>
         </div>
 
+        
         <div class="endpoint-card">
+          <div class="endpoint-header">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/v1/video/generations</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">
+              Generate videos. Same request shape as
+              <code>/v1/images/generations</code> — <code>model</code> and <code>prompt</code>
+              are required — but routed to the video handler. RunwayML, Leonardo and Weavy
+              video models are served here; sending them to the images endpoint reaches the
+              image handler instead.
+            </p>
+            <table class="param-table">
+              <thead>
+                <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>model</code></td><td>string</td><td>required</td>
+                  <td>Video model identifier (e.g. <code>weavy-kling</code>, <code>leo-sora-2</code>)</td>
+                </tr>
+                <tr>
+                  <td><code>prompt</code></td><td>string</td><td>required</td>
+                  <td>Description of the video to generate</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+<div class="endpoint-card">
           <div class="endpoint-header">
             <span class="method get">GET</span>
             <span class="endpoint-path">/v1/models/info?id={provider}/{modelId}</span>

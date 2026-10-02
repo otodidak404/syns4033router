@@ -3,6 +3,40 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/docs` — the page told operators to call the wrong endpoint for video
+
+The page is an iframe around a 253 KB static HTML file, so there is no flow logic
+to audit; what rots is the file. It claimed:
+
+```
+POST /v1/images/generations
+"Generate images or videos... This endpoint handles all image and video
+ generation requests."
+```
+
+`imageGeneration.js` mentions video zero times and routes to the image handler,
+while `/v1/video/generations` is a real endpoint with its own `videoGeneration`
+handler — verified live, both answer 400 "No credentials for provider", i.e. both
+reach their handler. So a video model sent to the documented endpoint lands in the
+image path, and the endpoint that would have worked was never mentioned.
+
+The images description now points at the video endpoint, and a full card
+documents it with its method, description and required parameters.
+
+`test-docs-page.mjs` (7) locks this in: every media route under `/v1` must
+appear on a card header, the false claim must stay gone, every documented path
+must resolve to a real route, and the HTML must stay balanced.
+
+Writing it took three attempts at the same trap, which this project has now hit
+repeatedly: the path appears twice — once in the images description pointing here,
+once on the card — so `html.includes` passes with the card deleted, and
+`cards.find(c => c.includes(path))` returns the *images* card. Both had to match
+on the card's own `endpoint-path` header instead. Earlier in this session the same
+shape produced a green assertion for the OpenCode rollback and for the empty-state
+title; the rule is that anything present in more than one place has to be counted,
+not matched.
+
+
 ### `/dashboard/cli-tools` — two more silent failures, found by asking the wrong question first
 
 The suite asked "does this write check the response?" and all thirty-eight passed.
@@ -613,7 +647,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 313 assertions, 30 suites, all passed |
+| `npm run test` | 320 assertions, 31 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |
