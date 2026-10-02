@@ -70,9 +70,14 @@ export async function updateApiKey(id, data) {
     const row = await db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
+    // The key column holds the hash and is deliberately absent from rowToKey —
+    // the plaintext is never read back. Writing merged.key therefore wrote
+    // undefined into the column, silently storing NULL, and the row stopped
+    // matching its own hash: toggling a key's active flag destroyed it. Only
+    // the columns an update may legitimately change are written.
     await db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, id]
+      `UPDATE apiKeys SET name = ?, machineId = ?, isActive = ? WHERE id = ?`,
+      [merged.name, merged.machineId, merged.isActive ? 1 : 0, id]
     );
     result = merged;
   });

@@ -1,4 +1,8 @@
+import { checkFetchableUrl } from "../../../lib/net/ssrf.js";
 
+// Provider-node validation fetches a baseUrl the caller supplied. Every fetch
+// below is built from it, so the check belongs at the one place they all
+// originate.
 
 // Fetch with timeout wrapper
 const fetchWithTimeout = (url, options, timeout = 10000) => {
@@ -79,6 +83,20 @@ export async function POST_handler(req, res) {
     // Validate URL format
     if (!isValidUrl(baseUrl)) {
       return res.status(400).json({ error: "Invalid URL format" });
+    }
+
+    // isValidUrl only asks whether new URL() parses, so it accepted
+    // http://127.0.0.1:PORT, http://[::1]:PORT, http://0.0.0.0:PORT and the
+    // decimal and octal spellings of 127.0.0.1. Every fetch below is built from
+    // this baseUrl, and on failure the upstream body is echoed back in `warning`
+    // — which together made this a read primitive against loopback, private
+    // ranges and the cloud metadata service. One check here covers all five.
+    const reachable = await checkFetchableUrl(baseUrl.trim());
+    if (!reachable.ok) {
+      return res.status(403).json({
+        valid: false,
+        error: `Base URL rejected: ${reachable.error}`,
+      });
     }
 
     // Custom Embedding Validation - test POST /embeddings directly

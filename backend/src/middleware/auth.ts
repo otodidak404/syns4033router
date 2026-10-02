@@ -85,18 +85,26 @@ export async function authMiddleware(
   // public, what is protected, or whether a CLI token is accepted.
   const path = req.path.toLowerCase();
 
-  // Allow public paths
-  if (PUBLIC_API_PATHS.some((p) => path === p || path.startsWith(p + "/")))
-    return next();
-  if (PUBLIC_PREFIXES.some((p) => path.startsWith(p)))
-    return next();
-
-  // Allow CLI token
-  if (await hasValidCliToken(req)) return next();
-
   const alwaysProtected = ALWAYS_PROTECTED.some(
     (p) => path === p || path.startsWith(p + "/")
   );
+
+  // ALWAYS_PROTECTED is decided before the public list, not after. "/api/version"
+  // is public so that route's version strings can be read, but its subpaths are
+  // not: /api/version/shutdown kills the process and /api/version/update replaces
+  // it. Checking public first meant "/api/version/shutdown" matched the public
+  // prefix and returned here, so the shutdown route was reachable by anyone who
+  // found the URL — a remote DoS with no credentials. A public parent never
+  // grants its children.
+  if (!alwaysProtected) {
+    if (PUBLIC_API_PATHS.some((p) => path === p || path.startsWith(p + "/")))
+      return next();
+    if (PUBLIC_PREFIXES.some((p) => path.startsWith(p)))
+      return next();
+
+    // Allow CLI token
+    if (await hasValidCliToken(req)) return next();
+  }
 
   try {
     const settings = await getSettings();

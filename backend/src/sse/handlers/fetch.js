@@ -49,7 +49,7 @@ export async function handleFetch(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
-  if (clientApiKeyRequired({ model: modelStr, settings }).required) {
+  if (clientApiKeyRequired({ model: providerInput, settings }).required) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");

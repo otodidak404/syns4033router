@@ -116,6 +116,13 @@ export async function exportDb() {
   return out;
 }
 
+// A stored key is the sha256 digest of the plaintext. Matching that shape lets an
+// export round-trip untouched while a hand-edited plaintext file is still hashed.
+const HASHED_KEY = /^[0-9a-f]{64}$/;
+function isHashedKey(value) {
+  return typeof value === "string" && HASHED_KEY.test(value);
+}
+
 export async function importDb(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
@@ -161,7 +168,14 @@ export async function importDb(payload) {
     for (const k of payload.apiKeys || []) {
       await db.run(
         `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
-        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString()]
+        // An export written by this app already carries hashes, and hashing a hash
+      // would break it, so only a plaintext-looking key is hashed. A restored
+      // plaintext key used to be stored verbatim: validateApiKey looks the key up
+      // by hash, so it could never match again and the key 401'd permanently.
+      [
+        k.id,
+        isHashedKey(k.key) ? k.key : hashApiKey(k.key),
+        k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString()]
       );
     }
     for (const c of payload.combos || []) {

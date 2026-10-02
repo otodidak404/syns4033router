@@ -3,10 +3,14 @@
 // Shape handling lives in systemPrompt.js (shared with modelSkill.js).
 
 import { CAVEMAN_PROMPTS } from "./cavemanPrompts.js";
-import { injectSystemText } from "./systemPrompt.js";
+import { injectSystemText, readSystemText } from "./systemPrompt.js";
 
 export function injectCaveman(body, format, level) {
   const prompt = CAVEMAN_PROMPTS[level];
   if (!body || !prompt) return false;
+  // The live prompt and the skill injector both check whether their block is
+  // already present before writing, so a retried injection cannot duplicate
+  // them. This one did not, so any second pass stacked another copy.
+  if (readSystemText(body, format).includes(prompt)) return true;
   return injectSystemText(body, format, prompt);
 }
