@@ -61,7 +61,7 @@ app.use(cors({
 // /api/settings/database returns those plus the full configuration. With no
 // Cache-Control a browser or an intermediary is free to keep them, and a shared
 // proxy then holds the session signing secret. Set here rather than per route so
-// a response a route forgot to mark is still not stored, and ETag is dropped
+// a response a route forgot to mark is still not stored.
 // because the body differs per viewer and must not be revalidated by a cache.
 app.use((req, res, next) => {
   const p = req.path.toLowerCase();
@@ -71,7 +71,11 @@ app.use((req, res, next) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    res.removeHeader("ETag");
+    // No ETag handling here on purpose. Express generates one while sending the
+    // body, which is after this middleware runs, so removing it at this point
+    // does nothing — the header is still present in the response. It is also
+    // harmless: no-store forbids a cache from storing the response at all, so
+    // there is nothing to revalidate against.
   }
   next();
 });

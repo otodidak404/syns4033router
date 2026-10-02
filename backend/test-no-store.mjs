@@ -41,11 +41,16 @@ t("it covers the mounted prefixes, case-insensitively", () => {
     "a case-sensitive prefix check would miss /API and /V1");
 });
 
-t("ETag is dropped, not merely left", () => {
-  // The body differs per viewer, so a cached ETag would let an intermediary
-  // revalidate one user's settings against another's.
-  assert.ok(/removeHeader\(["']ETag["']\)/.test(server),
-    "ETag still present; a shared cache could revalidate across viewers");
+t("no dead ETag handling is claimed", () => {
+  // An earlier version called res.removeHeader("ETag") here and asserted it
+  // worked. It does not: this middleware runs before the handler, and Express
+  // generates the ETag while sending the body. The header is still in the
+  // response. It is harmless under no-store, so the code and the claim are
+  // both gone rather than left asserting something untrue.
+  assert.ok(!/removeHeader\(\s*["']ETag["']/.test(server),
+    "an ETag removal that never takes effect is back");
+  assert.ok(/harmless: no-store forbids a cache/.test(server),
+    "the reason ETag can stay is not documented");
 });
 
 t("the middleware does not swallow the request", () => {
