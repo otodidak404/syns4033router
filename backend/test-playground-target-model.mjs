@@ -73,9 +73,31 @@ t("Run stays disabled until there is a model to run", () => {
     "running with no target model is what produced the instant empty reply");
 });
 
-t("a target model can be typed when the entry is global", () => {
-  assert.ok(page.includes("Model to test against"),
-    "the operator needs a way to supply the model a global entry lacks");
+t("a global entry gets a model chosen for it, not one demanded", () => {
+  // Asking the operator to type an id made testing a global prompt a chore for
+  // no gain. A model must be chosen automatically, and shown, not requested.
+  assert.ok(/autoModel/.test(page),
+    "the playground must choose a model for a global entry");
+  assert.ok(/id\.startsWith\("oc\/"\)/.test(page),
+    "the default must prefer a provider that runs with no provider key");
+  // The phrase survives as the picker's modal title, so what matters is that no
+  // input asks the operator to supply the id.
+  const demandsAnId = /placeholder="[^"]*(?:e\.g\.|\.\/|name provider|type)[^"]*"/i.test(page)
+    && /value=\{targetModel\}/.test(page);
+  assert.ok(!demandsAnId,
+    "the free-text field is gone; nothing should be demanded of the operator");
+});
+
+t("the chosen model is visible and overridable", () => {
+  assert.ok(/Testing against/.test(page),
+    "the operator has to see which model a global entry will run on");
+  assert.ok(/Ganti/.test(page),
+    "and needs a way to choose a different one");
+});
+
+t("the default is fetched rather than hard-coded", () => {
+  assert.ok(/fetch\("\/api\/models"\)/.test(page),
+    "the catalogue is the source of truth; a hard-coded id would go stale");
 });
 
 console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);

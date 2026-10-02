@@ -1,4 +1,23 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+        {/* A global entry names no model, so one is chosen and shown rather than
+            demanded. Nothing to fill in — the label says what will run and offers
+            a way to change it. */}
+        {!entryNamesAModel && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-surface-2 px-3 py-2">
+            <span className="text-[11px] text-text-muted">Testing against</span>
+            <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-text-main">
+              {runnableModel || "—"}
+            </code>
+            <Button size="sm" variant="ghost" icon="swap_horiz"
+              onClick={() => setShowModelSelect(true)}>
+              Ganti
+            </Button>
+            <span className="basis-full text-[11px] text-text-muted">
+              This prompt targets every model, so it needs one concrete model to
+              test on.
+            </span>
+          </div>
+        )}
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Card, Button, Modal, Input, CardSkeleton, Toggle, ConfirmModal,
   ModelSelectModal, SegmentedControl,
@@ -93,6 +112,7 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
   const [isActive, setIsActive] = useState(entry?.isActive ?? true);
   const [isLive, setIsLive] = useState(entry?.isLive ?? false);
   const [showModelSelect, setShowModelSelect] = useState(false);
+  const [catalog, setCatalog] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -262,9 +282,31 @@ function Playground({ entries, initialEntryId, onLoadAll, activeProviders, model
     setTargetModel("");
   }, [selectedId]);
 
+  // A global entry names every model and no single one, so something has to be
+  // chosen to run it on. Asking the operator to type an id made testing a
+  // global prompt a chore for no gain — so a model is chosen here, preferring one
+  // that runs with no provider key, and the operator can still override it.
+  useEffect(() => {
+    fetch("/api/models")
+      .then(r => (r.ok ? r.json() : { models: [] }))
+      .then(d => setCatalog(d.models || d.data || []))
+      .catch(() => setCatalog([]));
+  }, []);
+
   const selected = entries.find(e => e.id === selectedId) || null;
   const entryNamesAModel = selected && selected.model !== GLOBAL_TARGET;
-  const runnableModel = (entryNamesAModel ? selected.model : "") || targetModel.trim();
+
+  // oc/* is the OpenCode Free provider, declared noAuth: it runs with no provider
+  // key, so a default chosen from it works on a fresh install where nothing else
+  // is configured yet.
+  const autoModel = useMemo(() => {
+    const ids = catalog
+      .map(m => m.fullModel || (m.provider && m.model ? `${m.provider}/${m.model}` : null))
+      .filter(Boolean);
+    return ids.find(id => id.startsWith("oc/")) || ids[0] || "";
+  }, [catalog]);
+
+  const runnableModel = (entryNamesAModel ? selected.model : "") || targetModel.trim() || autoModel;
 
   // Sends the prompt to a real model over the real request path. The previous
   // version built the "output" locally by concatenating strings, which looked
@@ -323,27 +365,23 @@ function Playground({ entries, initialEntryId, onLoadAll, activeProviders, model
       )}
 
       <div className="flex flex-col gap-2">
-        {/* Only shown when the entry does not name a runnable model itself. */}
+        {/* A global entry names every model and no single one, so a model has to
+            be chosen to run it on. It is chosen here and shown, rather than
+            demanded — typing an id made testing a global prompt a chore. */}
         {!entryNamesAModel && (
-          <div className="flex flex-col gap-1.5">
-            <input
-              value={targetModel}
-              onChange={(e) => { setTargetModel(e.target.value); setError(""); }}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(); }}
-              placeholder="Model to test against — e.g. oc/space-bunny-free"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs text-text-main outline-none focus:border-primary"
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="secondary" icon="search"
-                onClick={() => setShowModelSelect(true)}>
-                Pilih dari katalog
-              </Button>
-              <span className="text-[11px] text-text-muted">
-                This entry targets every model, so there is nothing to run it on by
-                itself. Pick one model to test it against — or type an id the
-                catalogue does not carry.
-              </span>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-surface-2 px-3 py-2">
+            <span className="text-[11px] text-text-muted">Testing against</span>
+            <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-text-main">
+              {runnableModel || "—"}
+            </code>
+            <Button size="sm" variant="ghost" icon="swap_horiz"
+              onClick={() => setShowModelSelect(true)}>
+              Ganti
+            </Button>
+            <span className="basis-full text-[11px] text-text-muted">
+              This prompt targets every model, so it needs one concrete model to
+              test on. Change it if you want to check another one.
+            </span>
           </div>
         )}
         <textarea
