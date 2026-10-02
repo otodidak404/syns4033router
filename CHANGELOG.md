@@ -23,7 +23,7 @@ image path, and the endpoint that would have worked was never mentioned.
 The images description now points at the video endpoint, and a full card
 documents it with its method, description and required parameters.
 
-`test-docs-page.mjs` (7) locks this in: every media route under `/v1` must
+`test-docs-page.mjs` (6) locks this in: every media route under `/v1` must
 appear on a card header, the false claim must stay gone, every documented path
 must resolve to a real route, and the HTML must stay balanced.
 
@@ -647,7 +647,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 320 assertions, 31 suites, all passed |
+| `npm run test` | 319 assertions, 31 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |
