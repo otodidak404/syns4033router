@@ -6,6 +6,23 @@ import { execSync, spawn } from "child_process";
 import { savePid, loadPid, clearPid } from "./pid.js";
 import { DATA_DIR } from "../../../lib/dataDir.js";
 
+/**
+ * spawn() reports a missing binary by emitting 'error' on the ChildProcess, not
+ * by throwing. With no listener Node treats that as an unhandled 'error' event
+ * and tears the process down — so a dashboard button for a feature the platform
+ * does not have takes the whole server with it. This attaches the listener and
+ * returns the child so callers keep their normal flow.
+ */
+function spawnSafe(child, label) {
+  child.on("error", (err) => {
+    console.error(`[tunnel] ${label} failed to start: ${err.message}`);
+    if (typeof child.stdout?.destroy === "function") child.stdout.destroy();
+    if (typeof child.stderr?.destroy === "function") child.stderr.destroy();
+  });
+  return child;
+}
+
+
 const BIN_DIR = path.join(DATA_DIR, "bin");
 const BINARY_NAME = "cloudflared";
 const IS_WINDOWS = os.platform() === "win32";
@@ -201,6 +218,7 @@ export async function spawnCloudflared(tunnelToken) {
     cwd: os.tmpdir(),
     stdio: ["ignore", "pipe", "pipe"]
   });
+spawnSafe(child, 'cloudflared tunnel run');
 
   cloudflaredProcess = child;
   savePid(child.pid);
@@ -301,6 +319,7 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  spawnSafe(child, 'child');
 
   cloudflaredProcess = child;
   savePid(child.pid);

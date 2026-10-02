@@ -2,7 +2,50 @@
 
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
-Sections are `## Fixed`, `## Verification`, `## Known issues` — one top-level
+Sections are `## Fixed
+
+### `/dashboard/endpoint` — clicking Tailscale took the whole server down
+
+`spawn()` reports a missing executable by emitting `error` on the ChildProcess,
+not by throwing, so a route's `try/catch` never sees it — nothing was thrown
+inside the promise. With no listener Node treats that as an unhandled `error`
+event and exits the process.
+
+Thirteen `spawn` calls in `src/lib/tunnel/` had no listener. On Railway there is
+no `tailscaled`, `cloudflared`, `sudo` or `brew`, so every one of them was a live
+crash button on this page. Observed live:
+
+```
+POST /api/tunnel/tailscale-enable    → 502
+Error: spawn tailscaled ENOENT
+  throw er; // Unhandled 'error' event
+npm error code 1
+```
+
+The Railway process exited and came back on its own, which is why it looked like
+a transient edge error rather than an outage. `src/lib/tunnel/tailscale/tailscale.js`
+and `src/lib/tunnel/cloudflare/cloudflared.js` now route every spawn through a
+`spawnSafe` helper that attaches the listener and logs the failure.
+
+### `/dashboard/endpoint` — a toggle could show a value the server never stored
+
+`patchSetting` awaited `fetch` and ignored the response, so a failed save
+resolved as success. Three handlers set their switch first and saved second:
+`handleCavemanEnabled`, `handleCavemanLevel`, `handleTunnelDashboardAccess`. On a
+failed write the switch kept the new position while the server kept the old one.
+
+`patchSetting` now throws on a non-ok response and logs the status and body, and
+the handlers move their state only after the save resolves — the pattern
+`handleRequireApiKey` and `handleRtkEnabled` already used. The `.catch` on the
+two caveman handlers is what keeps that rethrow from surfacing as an unhandled
+rejection.
+
+Covered by `backend/test-endpoint-page.mjs` (6) and
+`backend/test-tunnel-spawn-guard.mjs` (4). Four mutations were applied and each
+turns the suite red: removing the spawn guards, making `patchSetting` accept any
+status, restoring the optimistic toggle, and dropping its catch.
+
+`, `## Verification`, `## Known issues` — one top-level
 heading each, in that order, with no horizontal rule splitting a section in two.
 
 ---
@@ -229,6 +272,22 @@ Would inject into <model>:
 --- user turn ---
 <input>
 ```
+
+
+| check | result |
+|---|---|
+| `npm run test` | 260 assertions, 22 suites, all passed |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 |
+| `/api/tunnel/tailscale-*` before | 502, process exited |
+| `/api/tunnel/tailscale-*` after | 200, process alive |
+| live toggle round-trip | `cavemanEnabled`, `cavemanLevel`, `requireApiKey`, `rtkEnabled`, `tunnelDashboardAccess` all persist |
+
+`PATCH /api/settings` accepts an unknown key and an out-of-range `cavemanLevel`
+without complaint, returning 200 either way. Not exploitable — the values are
+inert and only ever written by this dashboard — but they are stored, so a bad
+value can sit in the config until something reads it.
+
 
 Nothing was sent, there was no baseline, and the result looked enough like a
 reply that a working prompt and a broken one were indistinguishable — without

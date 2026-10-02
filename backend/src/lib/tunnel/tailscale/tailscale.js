@@ -7,6 +7,23 @@ import { promisify } from "util";
 import { execWithPassword } from "../../../mitm/dns/dnsConfig.js";
 import { DATA_DIR } from "../../../lib/dataDir.js";
 
+/**
+ * spawn() reports a missing binary by emitting 'error' on the ChildProcess, not
+ * by throwing. With no listener Node treats that as an unhandled 'error' event
+ * and tears the process down — so a dashboard button for a feature the platform
+ * does not have takes the whole server with it. This attaches the listener and
+ * returns the child so callers keep their normal flow.
+ */
+function spawnSafe(child, label) {
+  child.on("error", (err) => {
+    console.error(`[tunnel] ${label} failed to start: ${err.message}`);
+    if (typeof child.stdout?.destroy === "function") child.stdout.destroy();
+    if (typeof child.stderr?.destroy === "function") child.stderr.destroy();
+  });
+  return child;
+}
+
+
 const execAsync = promisify(exec);
 
 const BIN_DIR = path.join(DATA_DIR, "bin");
@@ -264,6 +281,7 @@ async function installTailscaleMac(sudoPassword, log) {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
     });
+    spawnSafe(child, 'installer');
     child.stderr.on("data", (d) => {
       const line = d.toString().trim();
       if (line) log(line);
@@ -281,6 +299,7 @@ async function installTailscaleMac(sudoPassword, log) {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true
     });
+spawnSafe(child, 'installer');
     let stderr = "";
     child.stderr.on("data", (d) => { stderr += d.toString(); });
     child.stdout.on("data", (d) => {
@@ -314,6 +333,7 @@ async function installTailscaleLinux(sudoPassword, log) {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
     });
+    spawnSafe(curlChild, 'curl');
     let scriptContent = "";
     let curlErr = "";
     curlChild.stdout.on("data", (d) => { scriptContent += d.toString(); });
@@ -529,8 +549,10 @@ export async function startDaemonWithPassword(sudoPassword) {
       cwd: os.tmpdir(),
       env: { ...process.env, PATH: EXTENDED_PATH },
     });
+    spawnSafe(child, 'sudo');
     child.stdin.write(`${sudoPassword}\n`);
     child.stdin.end();
+    spawnSafe(child, 'child');
     child.unref();
   } else {
     const child = spawn(tailscaledBin, daemonArgs, {
@@ -539,6 +561,7 @@ export async function startDaemonWithPassword(sudoPassword) {
       cwd: os.tmpdir(),
       env: { ...process.env, PATH: EXTENDED_PATH },
     });
+spawnSafe(child, 'tailscaled daemon');
     child.unref();
   }
 
@@ -585,12 +608,14 @@ export function startLogin(hostname) {
     }
 
     const args = tsArgs("up", "--accept-routes");
+    spawnSafe(child, 'child');
     if (hostname) args.push(`--hostname=${hostname}`);
     const child = spawn(bin, args, {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
       windowsHide: true
     });
+spawnSafe(child, 'tailscale login');
 
     let resolved = false;
     let output = "";
@@ -681,6 +706,7 @@ export async function startFunnel(port) {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
     });
+    spawnSafe(child, 'child');
 
     let resolved = false;
     let output = "";

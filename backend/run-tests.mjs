@@ -29,6 +29,8 @@ const SUITES = [
   ["test-internal-api-key.mjs", true],
   ["test-skills-route.mjs", true],
   ["test-auth-gate.mjs", true],
+  ["test-tunnel-spawn-guard.mjs", false],
+  ["test-endpoint-page.mjs", false],
 ];
 
 let failed = 0;

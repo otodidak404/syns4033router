@@ -338,26 +338,28 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  // Every toggle on this page moves local state first and saves second, so a save
+  // that fails leaves the switch showing a value the server never took. Callers
+  // roll their own state back from the catch; this only reports it.
   const patchSetting = async (patch) => {
-    try {
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-    } catch (error) {
-      console.log("Error updating setting:", error);
-    }
-  };
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        console.error(`PATCH /api/settings ${JSON.stringify(patch)} -> ${res.status}`, detail.slice(0, 200));
+        throw new Error(`PATCH /api/settings -> ${res.status}`);
+      }
+    };
 
   const handleCavemanEnabled = (value) => {
-    setCavemanEnabled(value);
-    patchSetting({ cavemanEnabled: value });
+    patchSetting({ cavemanEnabled: value }).then(() => setCavemanEnabled(value)).catch(() => {});
   };
 
   const handleCavemanLevel = (level) => {
-    setCavemanLevel(level);
-    patchSetting({ cavemanLevel: level });
+    patchSetting({ cavemanLevel: level }).then(() => setCavemanLevel(level)).catch(() => {});
   };
 
 
