@@ -3,6 +3,35 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/system-prompt` — every failed run reported the same unusable message
+
+A model that does not exist, a model that exists but has no key, and a provider
+that answered with an error body all arrive at the same branch: the upstream body
+is read, `extractText` finds no assistant text, and the reason is discarded. Live,
+all three returned exactly `"The model returned no text for this run."` — which
+names neither the model, the provider, nor the cause, and is the one result an
+operator cannot act on.
+
+`failureReason(raw)` in `routes/system-prompts/try/route.ts` now reads `error`,
+`message` or `detail` from the body it already has, handles a nested
+`{ message }`, caps the text at 240 characters so a verbose upstream error cannot
+flood the panel, and keeps the generic wording for a body that is genuinely empty
+or not JSON.
+
+CRUD, validation and the playground itself were re-checked on the live
+deployment and needed no change: create/read/update/toggle/delete all round-trip,
+`GLOBAL-JB` (`*`) is refused with an explanation rather than silently running
+nothing, the 200k limit matches the one the library enforces, and the five stored
+entries were left untouched by the audit.
+
+Covered by `backend/test-system-prompt-page.mjs` (6), which executes the helper
+rather than only matching its source. Five mutations turn it red: restoring the
+fixed string, dropping `message` from the fields read, removing the call,
+removing one of the two fallbacks, and making the store limit disagree with the
+playground. The first version of that last check counted `return` statements,
+which stayed at three when a fallback was deleted and so missed it.
+
+
 ### `/dashboard/providers` — a rejected write left the UI showing a state the server never took
 
 `fetch()` rejects only on a network error. An HTTP 404 or 500 is an ordinary
@@ -336,7 +365,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 270 assertions, 24 suites, all passed |
+| `npm run test` | 276 assertions, 25 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

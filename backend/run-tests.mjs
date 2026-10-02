@@ -33,6 +33,7 @@ const SUITES = [
   ["test-endpoint-page.mjs", false],
   ["test-req-body-parsed.mjs", false],
   ["test-providers-page.mjs", false],
+  ["test-system-prompt-page.mjs", false],
 ];
 
 let failed = 0;

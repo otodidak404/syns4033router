@@ -49,6 +49,32 @@ function textFromJson(j) {
     ?? "";
 }
 
+/**
+ * Why did this run produce no text?
+ *
+ * A missing model, a model that exists but has no key, and a provider that
+ * answered with an error body all arrive here as "no text", so the one message
+ * left an operator with three unrelated causes and no way to tell them apart.
+ * The upstream body carries the reason; it was being read and discarded.
+ */
+function failureReason(raw) {
+  const text = typeof raw === "string" ? raw : raw == null ? "" : JSON.stringify(raw);
+  if (!text.trim()) return "The model returned no text for this run.";
+  for (const candidate of [text, text.slice(0, text.lastIndexOf("}") + 1)]) {
+    const head = candidate.trim();
+    if (!head.startsWith("{")) continue;
+    try {
+      const body = JSON.parse(head);
+      const err = body?.error ?? body?.message ?? body?.detail;
+      if (typeof err === "string" && err.trim()) return err.trim().slice(0, 240);
+      if (err && typeof err === "object" && typeof err.message === "string") {
+        return err.message.trim().slice(0, 240);
+      }
+    } catch { /* not this shape — fall through to the next reading */ }
+  }
+  return "The model returned no text for this run.";
+}
+
 function extractText(raw) {
   if (!raw) return "";
   const text = typeof raw === "string" ? raw : JSON.stringify(raw);
@@ -114,7 +140,7 @@ async function runLeg({ model, message, systemPrompt }) {
       ? { ok: true, text, latencyMs: Date.now() - started }
       : {
           ok: false,
-          error: "The model returned no text for this run.",
+          error: failureReason(raw),
           latencyMs: Date.now() - started,
         };
   } catch (err) {
