@@ -10,10 +10,10 @@
 // The draft is written into the body by the caller and the library entry is
 // skipped via a header, so exactly one persona is in play.
 
-import { handleChat } from "../../../../sse/handlers/chat.js";
-import { injectSystemText } from "../../../../../open-sse/rtk/systemPrompt.js";
-import { getSystemPrompts } from "../../../../lib/localDb.js";
-import { markInternal } from "../../../../lib/auth/internalCall.js";
+import { handleChat } from "../../../sse/handlers/chat.js";
+import { injectSystemText } from "../../../../open-sse/rtk/systemPrompt.js";
+import { getSystemPrompts } from "../../../lib/localDb.js";
+import { markInternal } from "../../../lib/auth/internalCall.js";
 
 export const dynamic = "force-dynamic";
 
