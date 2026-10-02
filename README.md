@@ -181,33 +181,61 @@ Heroku injects `PORT` automatically.
 
 ### Deploy to Railway
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/new?template=https://github.com/otodidak404/syns4033router)
+```bash
+git clone https://github.com/otodidak404/syns4033router.git
+cd syns4033router
+railway login
+railway up --detach
+railway volume add -m /data
+```
 
-This repository is flagged as a Railway template, so the button above deploys it
-without any manual setup. Railway reads `railway.toml`, builds the included
-Dockerfile, and supplies `PORT`, `RAILWAY_PUBLIC_DOMAIN`, and
-`RAILWAY_PRIVATE_DOMAIN` on its own. **No variables are required.**
+This path needs no GitHub connection at all and takes about ninety seconds. It is
+the recommended way to deploy.
 
-**Before the first deploy, install the Railway GitHub App** for your account and
-grant it access to this repository — the button cannot create a project for an
-app that has not been installed. If the repository does not appear in Railway's
-repo picker, that access is what is missing.
+Railway reads `railway.toml`, builds the included Dockerfile, and supplies
+`PORT`, `RAILWAY_PUBLIC_DOMAIN`, and `RAILWAY_PRIVATE_DOMAIN` on its own.
+**No variables are required.**
+
+### A genuine one-click button
+
+A `Deploy on Railway` button needs a **Railway template code** of the form
+`railway.com/new/template/ZweBXA`. That code is issued by Railway, not by GitHub:
+
+1. Deploy this repository to a service whose source is linked to this **public**
+   repository — Railway will not build a template from a private one.
+2. In that service's **Settings**, use the template option to turn the service
+   into a template.
+3. Copy the **Template URL** Railway shows you.
+4. Put it in this README:
+
+```md
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/YOUR_CODE?utm_medium=integration&utm_source=button&utm_campaign=generic)
+```
+
+The path shape matters: `/new/template/CODE`, not `/new?template=<repo-url>`. The
+latter is read as a monorepo import and silently does nothing, which is why no
+button is linked here until a code exists. This repository is also flagged as a
+GitHub **template repository**, so the green **Use this template** button on the
+GitHub page works too — that one copies the code into your account first, and you
+then deploy from your copy.
+
+Either way, the volume step below is not optional.
 
 ### 1. Attach a volume at `/data`
 
-Do this immediately after the deploy finishes. It is the one step the template
-cannot do for you.
+Do this immediately after the deploy finishes. It is the one step no button can
+do for you.
 
 Without a volume the SQLite database lives in the container, so it is destroyed
 on every deploy — and with it the generated password, your API keys, your system
 prompts, and every provider connection. Adding the volume **after** the fact does
 not recover that first deploy's data; it only protects the next one.
 
-**Variables is not where this is.** In Railway, open the service, then
-**Settings → Volumes → Add Volume**, and set the mount path to `/data`.
+This is under the **service's Settings → Volumes**, not the Variables tab, which
+is the obvious wrong place to look.
 
-Add a PostgreSQL service and point `DATABASE_URL` at it instead if you prefer the
-database to outlive redeploys independently of volumes.
+Add a PostgreSQL service and point `DATABASE_URL` at it instead if you would
+rather the database outlive redeploys independently of volumes.
 
 ### 2. Get the generated password from the log
 
@@ -230,36 +258,26 @@ Open **Logs** in Railway and copy it, then sign in and change it under
 **Settings**. It is random rather than a fixed default on purpose: a known
 default would hand an authenticated instance to anyone who found the URL first.
 
-If you miss it, the password lives only in the database. Deleting the volume and
+If you miss it, the password lives only in the database — deleting the volume and
 redeploying generates a new one.
 
 To manage these yourself instead, set `INITIAL_PASSWORD`, `JWT_SECRET`,
 `API_KEY_SECRET`, and `MACHINE_ID_SALT` in the service's **Variables** tab.
-Anything you set takes precedence and nothing is generated for it — but only on a
-fresh database, so set it before the first boot rather than after.
+Anything you set takes precedence and nothing is generated for it, but only on a
+fresh database — set it before the first boot rather than after.
 
 ### 3. Generate a public domain
 
-**Settings → Networking → Generate Domain.** Railway serves it over HTTPS with no
-further configuration.
+**Settings → Networking → Generate Domain.** Railway serves it over HTTPS with
+no further configuration.
 
-### Deploying from a terminal instead
+### Deploying from GitHub instead
 
-The button needs the GitHub App. If you would rather push the build from a clone
-— which needs no GitHub connection at all, and is the path to use when you want
-the deployment driven from your own machine:
-
-```bash
-git clone https://github.com/otodidak404/syns4033router.git
-cd syns4033router
-railway login
-railway up --detach
-railway volume add -m /data
-```
-
-Attach the volume before anything long-lived matters. Note that the service is not
-linked to GitHub this way, so `git push` does not deploy — rerun `railway up` for
-each update.
+Install the Railway GitHub App for your account and grant it access to this
+repository before it appears in Railway's repo picker. Then choose **New Project
+→ Deploy from GitHub Repo**, select `otodidak404/syns4033router`, and Railway
+builds from the same `railway.toml`. Note that the service is then linked to
+GitHub, so a `git push` deploys by itself.
 
 Everything else in `backend/.env.example` is optional and has a working default.
 
