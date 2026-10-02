@@ -239,6 +239,12 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
 function Playground({ entries, initialEntryId, onLoadAll }) {
   const [selectedId, setSelectedId] = useState(initialEntryId || (entries[0]?.id ?? ""));
   const [input, setInput] = useState("");
+  // The entry's own model cannot be the test target: a global entry carries the
+  // wildcard "*", which selects every model at injection time and names none of
+  // them. Sending it ran nothing, and the run came back in milliseconds with an
+  // empty reply — the same thing a broken prompt looks like. So the target is
+  // chosen here, and seeded from the entry only when that entry names one.
+  const [targetModel, setTargetModel] = useState("");
   const [message, setMessage] = useState("");
   const [compare, setCompare] = useState(true);
   const [results, setResults] = useState(null);
@@ -250,7 +256,14 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
     if (!selectedId && entries[0]) setSelectedId(entries[0].id);
   }, [entries, selectedId]);
 
+  // Switching entry should not silently carry over the previous entry's target.
+  useEffect(() => {
+    setTargetModel("");
+  }, [selectedId]);
+
   const selected = entries.find(e => e.id === selectedId) || null;
+  const entryNamesAModel = selected && selected.model !== GLOBAL_TARGET;
+  const runnableModel = (entryNamesAModel ? selected.model : "") || targetModel.trim();
 
   // Sends the prompt to a real model over the real request path. The previous
   // version built the "output" locally by concatenating strings, which looked
@@ -258,7 +271,7 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
   // nothing to compare, so a working prompt and a broken one looked identical.
   const run = async () => {
     const msg = message.trim();
-    if (!msg || !selected) return;
+    if (!msg || !selected || !runnableModel) return;
     setBusy(true);
     setError("");
     setResults(null);
@@ -268,7 +281,7 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entryId: selected.id,
-          model: selected.model,
+          model: runnableModel,
           message: msg,
           compare,
         }),
@@ -309,6 +322,22 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
       )}
 
       <div className="flex flex-col gap-2">
+        {/* Only shown when the entry does not name a runnable model itself. */}
+        {!entryNamesAModel && (
+          <div className="flex flex-col gap-1.5">
+            <input
+              value={targetModel}
+              onChange={(e) => { setTargetModel(e.target.value); setError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(); }}
+              placeholder="Model to test against — e.g. oc/space-bunny-free"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs text-text-main outline-none focus:border-primary"
+            />
+            <p className="text-[11px] text-text-muted">
+              This entry targets every model, so there is nothing to run it on by
+              itself. Name one model to test it against.
+            </p>
+          </div>
+        )}
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
@@ -318,7 +347,11 @@ function Playground({ entries, initialEntryId, onLoadAll }) {
           className="w-full resize-y rounded-lg border border-border bg-surface p-3 text-sm text-text-main outline-none focus:border-primary"
         />
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={run} disabled={busy || !message.trim() || !selected} icon="play_arrow">
+          <Button
+            onClick={run}
+            disabled={busy || !message.trim() || !selected || !runnableModel}
+            icon="play_arrow"
+          >
             {busy ? "Running…" : "Run against the model"}
           </Button>
           <label className="flex cursor-pointer items-center gap-2 text-xs text-text-muted">

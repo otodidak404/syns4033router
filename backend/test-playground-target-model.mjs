@@ -1,0 +1,81 @@
+// The playground ran a global entry against the wildcard itself.
+//
+// A global entry's model is the token "*": it selects every model at injection
+// time and names none of them. The playground passed that token straight through
+// as the model to test on, so handleChat resolved no provider and returned in
+// about three milliseconds — reported as ok:true with empty text, which the
+// dashboard renders as "(empty reply)". That is indistinguishable from a prompt
+// that broke, and it is what made every global entry look broken.
+//
+// Both halves are pinned here: the route must refuse the token with a message
+// that says why, and the page must not send an entry's own model as the target.
+import assert from "assert";
+import fs from "node:fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const routePath = path.join(HERE, "src/routes/system-prompts/try/route.ts");
+const pagePath = path.join(HERE, "../frontend/src/pages/system-prompt/page.jsx");
+
+let pass = 0;
+const t = (name, fn) => {
+  try { fn(); console.log(`  ok  ${name}`); pass++; }
+  catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); process.exitCode = 1; }
+};
+
+const route = fs.readFileSync(routePath, "utf8");
+const page = fs.readFileSync(pagePath, "utf8");
+
+// ── the backend refuses the wildcard ─────────────────────────────────────────
+t("the route rejects the wildcard with a reason", () => {
+  assert.ok(route.includes("=== GLOBAL_TARGET"),
+    "the route must refuse the global token before running anything");
+  assert.ok(/Pick a concrete model/.test(route),
+    "the refusal has to explain that a global entry names no model to test on");
+});
+
+t("the refusal is a 400, not a silent empty run", () => {
+  const i = route.indexOf("=== GLOBAL_TARGET");
+  assert.ok(/status\(400\)/.test(route.slice(i, i + 600)),
+    "an unrunnable request is a client error, not a successful empty result");
+});
+
+t("the route does not report an empty run as ok:true", () => {
+  // runLeg marks ok:true the moment handleChat returns without throwing, so a
+  // body with no text must not be able to look like a successful run.
+  assert.ok(/return text\s*\?/.test(route),
+    "runLeg must branch on whether the run produced text");
+  assert.ok(/ok: false/.test(route) && /returned no text/.test(route),
+    "an empty extraction must be reported as a failure, with a reason");
+});
+
+// ── the frontend no longer inherits the entry's model as the target ─────────
+t("the playground computes a runnable model", () => {
+  assert.ok(page.includes("runnableModel"),
+    "the playground must resolve its own target model");
+});
+
+t("the request sends the runnable model, not the entry's", () => {
+  assert.ok(/model:\s*runnableModel/.test(page),
+    "the request must send the resolved target");
+  assert.ok(!/model:\s*selected\.model/.test(page),
+    "sending the entry's own model is what sent the wildcard");
+});
+
+t("an entry that names no model is detected by the wildcard token", () => {
+  assert.ok(/selected\.model !== GLOBAL_TARGET/.test(page),
+    "the page must compare against the same token the backend uses");
+});
+
+t("Run stays disabled until there is a model to run", () => {
+  assert.ok(/disabled=\{busy \|\| !message\.trim\(\) \|\| !selected \|\| !runnableModel\}/.test(page),
+    "running with no target model is what produced the instant empty reply");
+});
+
+t("a target model can be typed when the entry is global", () => {
+  assert.ok(page.includes("Model to test against"),
+    "the operator needs a way to supply the model a global entry lacks");
+});
+
+console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);

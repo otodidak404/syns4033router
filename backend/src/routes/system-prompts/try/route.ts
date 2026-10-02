@@ -14,6 +14,7 @@ import { handleChat } from "../../../sse/handlers/chat.js";
 import { injectSystemText } from "../../../../open-sse/rtk/systemPrompt.js";
 import { getSystemPrompts } from "../../../lib/localDb.js";
 import { markInternal } from "../../../lib/auth/internalCall.js";
+import { GLOBAL_TARGET } from "../../../../open-sse/rtk/livePrompt.js";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +102,17 @@ async function runLeg({ model, message, systemPrompt }) {
   try {
     const res = await handleChat(req);
     const raw = typeof res === "string" ? res : await res?.text?.();
-    return { ok: true, text: extractText(raw), latencyMs: Date.now() - started };
+    const text = extractText(raw);
+    // A run that produced no text did not succeed — it failed in a way that left
+    // nothing to show. Reporting it as ok:true rendered "(empty reply)" in the
+    // dashboard, which is the one result an operator cannot act on.
+    return text
+      ? { ok: true, text, latencyMs: Date.now() - started }
+      : {
+          ok: false,
+          error: "The model returned no text for this run.",
+          latencyMs: Date.now() - started,
+        };
   } catch (err) {
     return { ok: false, error: err.message, latencyMs: Date.now() - started };
   }
@@ -120,6 +131,17 @@ export async function POST_handler(req, res) {
   const message = typeof payload.message === "string" ? payload.message.trim() : "";
   if (!model) return res.status(400).json({ error: "model is required" });
   if (!message) return res.status(400).json({ error: "message is required" });
+
+  // The global entry's model is the wildcard "*", which selects every model at
+  // injection time and names none of them. Handing it to handleChat resolves no
+  // provider and returns in milliseconds, which the dashboard then reports as an
+  // empty reply — indistinguishable from a prompt that broke. A test has to name
+  // one concrete model, so say that instead of running nothing.
+  if (model === GLOBAL_TARGET) {
+    return res.status(400).json({
+      error: "Pick a concrete model to test against — this entry targets every model, so there is nothing to run it on.",
+    });
+  }
   if (message.length > MAX_MESSAGE) {
     return res.status(400).json({ error: `message must be under ${MAX_MESSAGE} characters` });
   }
