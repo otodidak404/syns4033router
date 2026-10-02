@@ -85,8 +85,11 @@ async function generateRootCA() {
   const privateKeyPem = forge.pki.privateKeyToPem(keys.privateKey);
   const certPem = forge.pki.certificateToPem(cert);
 
-  fs.writeFileSync(ROOT_CA_KEY_PATH, privateKeyPem);
-  fs.writeFileSync(ROOT_CA_CERT_PATH, certPem);
+  // 0o600 on the key: anyone holding a MITM CA's private key can impersonate
+  // any site that CA has been trusted for. The certificate is public by nature
+  // and stays 0644.
+  fs.writeFileSync(ROOT_CA_KEY_PATH, privateKeyPem, { mode: 0o600 });
+  fs.writeFileSync(ROOT_CA_CERT_PATH, certPem, { mode: 0o644 });
 
   console.log("✅ Root CA generated successfully");
   return { key: ROOT_CA_KEY_PATH, cert: ROOT_CA_CERT_PATH };

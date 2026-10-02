@@ -3,6 +3,53 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/mitm` — intercepted credentials were being written to disk in the clear
+
+The MITM dump files are a debugging aid. `dumpRequest` wrote
+
+```
+headers: req.headers
+```
+
+verbatim. An intercepted IDE request carries that tool's own session cookie and
+the provider API key the router substituted, and `LOG_BLACKLIST_URL_PARTS` filters
+by URL, so it never saw a header. The dumps landed in `DATA_DIR/logs/mitm` at the
+default 0644 — world-readable — and the request body alongside them is the user's
+prompt. Response dumps had the same problem with upstream `set-cookie`.
+
+`redactHeaders` now runs over both, replacing `authorization`,
+`proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `api-key`,
+`x-goog-api-key`, `x-auth-token`, `openai-api-key` and `anthropic-api-key` with
+`[redacted]`. The header name is kept so the dump still reads as a request, and
+the match is on `toLowerCase()` because Node lower-cases incoming names. Dumps are
+written 0o600.
+
+### `/dashboard/mitm` — the CA private key was world-readable
+
+`rootCA.js` wrote `rootCA.key` with no mode, so 0644. Anyone holding a MITM CA's
+private key can impersonate any site that CA has been trusted for, which is the
+entire attack. Now 0o600; the certificate stays 0644 because it is public by
+nature. `.gitignore` also gained `*.key`, `*.pem`, `*.pfx`, `*.p12`, `*.crt` and
+`/data` — these live in `DATA_DIR` and never in the tree, but a misconfigured
+`DATA_DIR` should not be able to commit a CA key, and `git rm` does not remove it
+from history.
+
+Checked and correct with no change needed: the page itself is a five-line wrapper
+whose four fetches all check `res.ok`; `mitm/logger.js` contains no unguarded
+`spawn`, so the crash class that took the server down on `/dashboard/endpoint` is
+absent here; and the status endpoint exposes no key material.
+
+Covered by `backend/test-mitm-page.mjs` (11), which executes `redactHeaders`
+against a real header set rather than only matching its source. Eight mutations
+turn it red: removing the redaction, dropping `cookie` from the list, making the
+match case-sensitive, deleting the header name instead of redacting its value,
+returning the CA key to 0644, skipping the response redaction, removing `*.key`
+from `.gitignore`, and returning the dumps to 0644. Two assertions in the first
+draft failed for the wrong reason — they read `out.cookie` and `out["x-custom"]`
+after passing mixed-case keys, so they were checking the absence of a key rather
+than its value.
+
+
 ### `/dashboard/quota` — audited, no defect found
 
 `quota/page.jsx` is an eleven-line wrapper rendering the same `ProviderLimits`
@@ -471,7 +518,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 292 assertions, 28 suites, all passed |
+| `npm run test` | 303 assertions, 29 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

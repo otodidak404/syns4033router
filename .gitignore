@@ -36,3 +36,16 @@ backend/profiles/
 backend/canva_debug/
 backend/src/automation/profiles/
 har/
+
+# Private keys and certificates — the MITM CA key can impersonate any trusted
+# site. These live in DATA_DIR, never in the tree, but a misconfigured DATA_DIR
+# should not be able to commit one.
+*.key
+*.pem
+*.pfx
+*.p12
+*.crt
+*.cer
+
+# Runtime data directory
+/data

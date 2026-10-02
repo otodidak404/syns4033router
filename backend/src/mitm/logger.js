@@ -48,6 +48,33 @@ function decodeBody(buf, encoding) {
 }
 
 // Save raw request: method + url + headers + body
+// Headers worth keeping for debugging (content negotiation, tracing) versus
+// headers that are credentials. An intercepted IDE request carries the tool's
+// own session cookie and the provider API key this router substituted, and the
+// dump files land in DATA_DIR readable by anything on the host — so the
+// credentials are stripped before anything reaches disk.
+const REDACTED = "[redacted]";
+const SENSITIVE_HEADERS = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-api-key",
+  "api-key",
+  "x-goog-api-key",
+  "x-auth-token",
+  "openai-api-key",
+  "anthropic-api-key",
+]);
+
+function redactHeaders(headers) {
+  const out = {};
+  for (const [k, v] of Object.entries(headers || {})) {
+    out[k] = SENSITIVE_HEADERS.has(k.toLowerCase()) ? REDACTED : v;
+  }
+  return out;
+}
+
 function dumpRequest(req, bodyBuffer, tag = "raw") {
   if (isBlacklisted(req.url)) return null;
   try {
@@ -60,9 +87,9 @@ function dumpRequest(req, bodyBuffer, tag = "raw") {
       method: req.method,
       url: req.url,
       host: req.headers.host,
-      headers: req.headers,
+      headers: redactHeaders(req.headers),
       body: parsed ?? bodyBuffer.toString("utf8")
-    }, null, 2));
+    }, null, 2), { mode: 0o600 });
     return file;
   } catch { return null; }
 }
@@ -78,7 +105,7 @@ function createResponseDumper(req, tag = "raw") {
   let headers = {};
   const chunks = [];
   return {
-    writeHeader: (s, h) => { status = s; headers = h || {}; },
+    writeHeader: (s, h) => { status = s; headers = redactHeaders(h); },
     writeChunk: (chunk) => {
       if (chunk == null) return;
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));

@@ -37,6 +37,7 @@ const SUITES = [
   ["test-combos-page.mjs", false],
   ["test-usage-page.mjs", false],
   ["test-quota-page.mjs", false],
+  ["test-mitm-page.mjs", false],
 ];
 
 let failed = 0;
