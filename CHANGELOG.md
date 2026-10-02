@@ -9,6 +9,96 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### `52bd983` — Pick a default free model that actually answers
+
+The playground's auto-chosen default was the first `oc/*` id in the catalogue,
+which was `oc/deepseek-v4-flash-free` — a model upstream refuses. Measured
+against this deployment, over `/v1/chat/completions` with a router key:
+
+| Model | Result |
+|---|---|
+| `oc/space-bunny-free` | `0.8s` → 200 `'OK'` |
+| `oc/deepseek-v4-flash-free` | 400 |
+| `oc/fledge-alpha-free` | 403 |
+| `oc/jev-1.13-free` | 500 |
+| `oc/mimo-v2.5-free` | 403 |
+| `oc/nemotron-3-ultra-free` | 403 |
+
+So the provider's own catalogue lists ids that do not serve, and picking from it
+blindly lands on a model that cannot run. The default now comes from a short list
+of models observed to respond, still gated on the catalogue so an empty one falls
+through, and still overridable in the UI.
+
+### `29beec9` — Restore the catalogue state the stray block took with it
+
+Deleting the module-scope JSX also removed the `useState` pair declared in the
+same region, so the playground threw `ReferenceError: catalog is not defined` on
+render. The suite now pairs each state setter with a declaration **inside the
+component that calls it** — the first version compared against every declaration
+in the file, which is too weak, because `setCatalog` also exists in a sibling
+component and so deleting the playground's copy still looked declared.
+
+### `a209bf1` — Remove the stray JSX that blanked the playground
+
+A copy of the model-chooser block had been left at module scope, above the
+imports. JSX there is a valid expression statement, so `tsc --noEmit` and
+`vite build` both accepted it — build exit 0, typecheck exit 0, 228 assertions
+green — and the page died at runtime with
+`ReferenceError: entryNamesAModel is not defined`. Found by driving the deployed
+page in Chromium and reading the console, which is the only layer that can see
+this class.
+
+The suite now asserts no JSX above the first import, that the module opens with an
+import, and that the chooser block appears exactly once.
+
+### `8a284e3` — Choose the playground's test model instead of asking for one
+
+A global entry carries the wildcard `*`, which selects every model at injection
+time and names none of them, so a concrete model has to be chosen to run it on.
+The previous fix left that as the operator's job — a text field plus a catalogue
+button, Run disabled until one was filled. The playground now fetches
+`/api/models` and chooses one itself, shows it, and offers **Ganti**. The
+free-text field is gone.
+
+### `e8767d4` — Add the free models to the backend catalogue too, and pin the two copies
+
+`09ce298` fixed the frontend catalogue and the picker still had nothing to show.
+The backend keeps its own copy under `open-sse/config`, and `/api/models` and
+`/v1/models` read that one — so a deploy with only the frontend fixed still
+reported `0` `oc/*` models, which the live check caught.
+
+Both copies now carry the same twelve free ids. The suite compares the two and
+fails on drift, and also fails if the `oc` block is emptied or parked again, if a
+non-free id appears under a provider declared `noAuth`, or if duplicates appear.
+
+### `09ce298` — Let the playground pick a model, and put the free models back
+
+The `oc` entry in the catalogue had all five of its models commented out, and
+every one of those ids is gone from OpenCode upstream — which is presumably why
+they were commented out. A provider with no catalogue entries appears in no
+picker and in no `/v1/models` listing, so `oc` was invisible everywhere while
+still working when called directly.
+
+Separately, model discovery went out with no `User-Agent`, which upstream
+Cloudflare answers with `403` (error code `1010`) — any User-Agent, even an empty
+one, returns `200`. Note that `fetchSuggestedModels` has no callers, so discovery
+does not feed `/api/models` or `/v1/models`; the catalogue fix is what makes the
+picker work.
+
+### `86b9eac` — Override dompurify past monaco-editor's exact pin
+
+`monaco-editor` 0.57 declares `dompurify` `"3.4.15"` exactly, and that release
+carries `GHSA-p98j-92pf-mc4p` — DOM XSS via a detached subtree left armed after
+an `IN_PLACE` `afterSanitize` hook. The patched release is 3.4.16, which npm will
+not install for an exact-pinned transitive dependency. An override forces it. No
+direct dependency is added, since the root package does not import dompurify.
+
+Audit goes from `3 low, 0 moderate, 1 high` to `0 low, 0 moderate, 1 high`. The
+remaining high is `node-forge` `GHSA-86w9-cpqp-85rv`, no fix available, and not
+reachable here: `backend/src/mitm/cert/rootCA.js` uses node-forge only for
+`rsa.generateKeyPair`, `createCertificate`, `certificateFromPem` and
+`md.sha256`, and never verifies a signature.
+
 ### `b046e8f` — Route the server's auth gate through requiresAuth
 
 **Case-sensitive auth bypass.** The outer gate compared `req.path` against
@@ -81,7 +171,7 @@ recorded as covered. Driving the deployed panel adds what unit tests cannot: the
 buttons render, clicking one fills the textarea and hides the preset row, and
 **All models** writes the wildcard target without touching the prompt.
 
-### `HEAD` — Accept the auth scheme in any case
+### `1868194` — Accept the auth scheme in any case
 
 `extractApiKey()` matched the scheme with `startsWith("Bearer ")`, so a client
 sending `bearer` or `BEARER` got a 401 for a perfectly valid key. RFC 7235 makes
@@ -101,7 +191,7 @@ the fix:
 `Basic` header are still rejected. Verified by mutation: restoring the
 case-sensitive comparison fails 7 of them.
 
-### `HEAD` — Fix the internal API key, which had never worked
+### `408e82a` — Fix the internal API key, which had never worked
 
 The provider page's model test reported `HTTP 401: Missing API key` for every
 model, including providers with a working key. That message blamed the operator
@@ -126,7 +216,7 @@ than degrading into a misleading 401.
 5 assertions, verified by mutation — restoring the two-level path fails 2, and
 removing the `.catch` that resets the cache fails 1.
 
-### `HEAD` — Give the playground a real backend, and align the key gate
+### `fd8fd30` — Give the playground a real backend, and align the key gate
 
 **The playground was not connected to anything.** Its run handler built the
 "output" by concatenating strings locally:
@@ -167,7 +257,7 @@ Covered by an assertion that a forged header does not read as internal.
 
 14 assertions. Suite total is 160 across 12 suites.
 
-### `HEAD` — Rescue API keys that died when hashing landed
+### `b62bc4b` — Rescue API keys that died when hashing landed
 
 Keys were stored in the clear before bca7ab6 and hashed after it.
 `validateApiKey()` has only ever looked a key up by `sha256(salt:key)`, so a row
@@ -197,7 +287,7 @@ the way in and passes already-hashed values through.
 migration, accepted after, still accepted after a second run, and a key that was
 never issued is still refused. Suite total is 172 across 13 suites.
 
-### `HEAD` — Close the SSRF on both outbound-fetch routes
+### `6112c03` — Close the SSRF on both outbound-fetch routes
 
 A URL that arrives in a request is attacker-controlled input, and fetching it
 verbatim turns the server into a proxy for whatever the server itself can reach —
@@ -265,7 +355,40 @@ known state.
 
 ## Verification
 
-`npm run test` — **199 assertions, 15 suites, all passed**; `npm run typecheck`
+Recorded against `52bd983`, tree clean, `HEAD` equal to `origin/master`.
+
+```
+npm run typecheck    exit 0
+npm run build        exit 0
+npm run test         exit 0   233 assertions, 18 suites, all passed
+npm audit            0 low, 0 moderate, 1 high  (node-forge, unreachable)
+
+deploy               SUCCESS · boot errors 0
+/api/models          871 models, 12 of them oc/*
+```
+
+Live, in Chromium against the deployed page — not inferred from a passing build:
+
+```
+playground   label "Testing against"    ok
+             button "Ganti"             ok
+             input demanding a model   none
+             runtime errors            none
+             "(empty reply)"           0
+
+             JB        820ms   "Hi. What do you need?"
+             BASELINE  889ms   "Hai. What need?"
+```
+
+**What the passing checks did not catch.** Two fixes in this range shipped broken:
+`8a284e3` and `29beec9` each blanked the page with a `ReferenceError` while
+`tsc`, `vite` and 231 assertions were all green. The cause was JSX left at module
+scope, which parses as a valid expression statement, so no compiler sees it. Only
+running the page in a browser surfaced it. The suite now checks module shape and
+per-component setter declarations instead of relying on the compiler.
+
+
+`npm run test` — **233 assertions, 18 suites, all passed**; `npm run typecheck`
 and `npm run build` exit 0; `hermes verify` OVERALL ok.
 
 | Suite | Assertions |
@@ -282,6 +405,9 @@ and `npm run build` exit 0; `hermes verify` OVERALL ok.
 | `test-api-key-rehash.mjs` | 12 |
 | `test-route-imports.mjs` | 4 |
 | `test-ssrf-guard.mjs` | 23 |
+| `test-playground-extract.mjs` | 13 |
+| `test-playground-target-model.mjs` | 15 |
+| `test-model-catalogue.mjs` | 6 |
 | `test-internal-api-key.mjs` | 5 |
 | `test-skills-route.mjs` | 13 |
 | `test-auth-gate.mjs` | 26 |
@@ -363,6 +489,24 @@ Deploys are driven by `railway up` from a local clone; the service is not linked
 to GitHub, so a push does not deploy on its own.
 
 ---
+
+Most of OpenCode's free catalogue does not currently serve. Measured against
+this deployment over `/v1/chat/completions` with a router key:
+
+| Model | Result |
+|---|---|
+| `oc/space-bunny-free` | `0.8s` → 200 `'OK'` |
+| `oc/deepseek-v4-flash-free` | 400 |
+| `oc/fledge-alpha-free` | 403 |
+| `oc/jev-1.13-free` | 500 |
+| `oc/mimo-v2.5-free` | 403 |
+| `oc/nemotron-3-ultra-free` | 403 |
+
+The twelve ids are listed because OpenCode lists them, not because they answer.
+The playground's default is therefore drawn from a short list of models observed
+to respond, which means it will need updating if upstream starts serving more —
+there is no live probe behind it, by choice, since a probe on every page load
+would be a request the operator did not ask for.
 
 ## Known issues
 
