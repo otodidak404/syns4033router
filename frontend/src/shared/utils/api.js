@@ -88,6 +88,44 @@ async function handleResponse(response) {
   return data;
 }
 
-const api = { get, post, put, del };
+/**
+ * Make a PATCH request
+ * @param {string} url - API endpoint
+ * @param {object} data - Request body
+ * @param {object} options - Fetch options
+ * @returns {Promise<object>}
+ */
+export async function patch(url, data, options = {}) {
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: { ...DEFAULT_HEADERS, ...options.headers },
+    body: JSON.stringify(data),
+    ...options,
+  });
+  return handleResponse(response);
+}
+
+/**
+ * Turn a Response into a rejection when the request failed.
+ *
+ * fetch() only rejects on a network error. An HTTP 400, 404 or 500 is a normal
+ * response, so `Promise.all` resolves and `Promise.allSettled` reports fulfilled
+ * with ok === false — a batch of writes can fail completely while the code
+ * carrying on believes it succeeded. Chaining this onto a hand-rolled fetch is
+ * the smallest change that makes those call sites notice.
+ *
+ * @param {Response} response
+ * @returns {Promise<Response>}
+ */
+export async function expectOk(response) {
+  if (response.ok) return response;
+  let detail = "";
+  try { detail = (await response.clone().text()).slice(0, 200); } catch { /* body already used */ }
+  const error = new Error(detail || `Request failed with ${response.status}`);
+  error.status = response.status;
+  throw error;
+}
+
+const api = { get, post, put, patch, del };
 export default api;
 

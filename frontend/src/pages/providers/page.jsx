@@ -25,6 +25,7 @@ import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
+import { expectOk } from "@/shared/utils/api";
 
 const VALIDATION_TIMEOUT_MS = 15000;
 
@@ -233,15 +234,23 @@ export default function ProvidersPage() {
           : c,
       ),
     );
-    await Promise.allSettled(
+    // allSettled reports "fulfilled" for a 404 — it only rejects on a network
+    // error — so the previous version could clear the whole group in the UI
+    // while nothing reached the server. expectOk turns a failed write into a
+    // rejection the catch below can act on.
+    const results = await Promise.allSettled(
       providerConns.map((c) =>
         fetch(`/api/providers/${c.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ isActive: newActive }),
-        }),
+        }).then(expectOk),
       ),
     );
+    if (results.some((r) => r.status === "rejected")) {
+      await fetch_();
+      toast?.({ title: "Some connections could not be updated", type: "error" });
+    }
   };
 
   const handleBatchTest = async (mode, providerId = null) => {

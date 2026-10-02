@@ -3,6 +3,45 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/providers` — a rejected write left the UI showing a state the server never took
+
+`fetch()` rejects only on a network error. An HTTP 404 or 500 is an ordinary
+response, so it resolves. Verified against the live deployment rather than
+assumed:
+
+```
+PUT /api/providers/tidak-ada-xyz   → 404
+Promise.all      → catch jalan? false
+Promise.allSettled→ fulfilled, .ok = false
+```
+
+Every one of these call sites set local state before the request went out, so a
+write the server rejected left the card showing an order, an enabled flag or a
+deleted row that never happened. The batch delete was the worst: it filtered the
+rows out of the list on the next line regardless of outcome, so a connection that
+was never deleted looked deleted.
+
+`frontend/src/shared/utils/api.js` gained `patch` — it had `get`, `post`, `put`
+and `del`, which is why these sites hand-rolled `fetch` in the first place — and
+`expectOk`, which turns a failed response into a rejection. Fixed at:
+
+- `providers/page.jsx` batch enable/disable (`Promise.allSettled`, now inspected)
+- `providers/components/ConnectionsCard.jsx` strategy save, priority swap, reset-all
+- `providers/[id]/page.jsx` strategy save, priority swap, batch delete
+
+### `/dashboard/providers` — a 1722-line abandoned rewrite shipped beside the live one
+
+`frontend/src/pages/providers/[id]/page.new.jsx` had zero importers, no glob-based
+route picks it up, and only 7 of its 1762 lines matched the live `page.jsx`. It
+is an abandoned rewrite sitting under a name that reads as current, next to the
+file that actually renders. Deleted; the build is unchanged.
+
+Covered by `backend/test-providers-page.mjs` (6). Five mutations each turn it
+red: making `expectOk` return instead of throw, and removing the chain from the
+priority swap, the batch delete and the group toggle, plus restoring the dead
+file.
+
+
 ### `/dashboard/endpoint` — Tailscale install crashed on an empty request body
 
 `express.json()` has already consumed and parsed the stream by the time a handler
@@ -297,7 +336,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 264 assertions, 23 suites, all passed |
+| `npm run test` | 270 assertions, 24 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

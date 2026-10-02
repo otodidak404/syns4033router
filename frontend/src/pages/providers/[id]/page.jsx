@@ -17,6 +17,7 @@ import AddApiKeyModal from "./AddApiKeyModal";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import LeonardoAdminPanel from "./LeonardoAdminPanel";
+import { expectOk } from "@/shared/utils/api";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -322,7 +323,7 @@ export default function ProviderDetailPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerStrategies: updated }),
-      });
+      }).then(expectOk);
     } catch (error) {
       console.log("Error saving provider strategy:", error);
     }
@@ -664,12 +665,12 @@ export default function ProviderDetailPage() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ priority: index1 }),
-        }),
+        }).then(expectOk),
         fetch(`/api/providers/${newConnections[index2].id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ priority: index2 }),
-        }),
+        }).then(expectOk),
       ]);
     } catch (error) {
       console.log("Error swapping priority:", error);
@@ -1528,11 +1529,19 @@ export default function ProviderDetailPage() {
                             onConfirm: async () => {
                               setConfirmState(null);
                               try {
-                                await Promise.all(
+                                // Without expectOk a rejected-by-the-server delete
+                                // still resolved, and the next line dropped the rows
+                                // from the list — so a connection that was never
+                                // deleted looked deleted.
+                                const results = await Promise.allSettled(
                                   selectedConnectionIds.map((id) =>
-                                    fetch(`/api/providers/${id}`, { method: "DELETE" })
+                                    fetch(`/api/providers/${id}`, { method: "DELETE" }).then(expectOk)
                                   )
                                 );
+                                if (results.some((r) => r.status === "rejected")) {
+                                  await fetchConnections();
+                                  return;
+                                }
                                 setConnections(connections.filter(c => !selectedConnectionIds.includes(c.id)));
                                 clearSelection();
                               } catch (error) {

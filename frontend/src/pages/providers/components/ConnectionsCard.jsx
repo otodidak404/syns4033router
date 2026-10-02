@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { expectOk } from "@/shared/utils/api";
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -398,18 +399,21 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       const updated = { ...current };
       if (Object.keys(override).length === 0) delete updated[providerId];
       else updated[providerId] = override;
-      await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerStrategies: updated }) });
+      await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerStrategies: updated }) }).then(expectOk);
     } catch (e) { console.log("saveStrategy error:", e); }
   };
 
+  // Promise.all resolves even when the server answers 404 or 500 — fetch only
+  // rejects on a network error — so the catch below used to fire for the wrong
+  // reason and a failed swap left the card showing an order the server rejected.
   const handleSwapPriority = async (i1, i2) => {
     const next = [...connections];
     [next[i1], next[i2]] = [next[i2], next[i1]];
     setConnections(next);
     try {
       await Promise.all([
-        fetch(`/api/providers/${next[i1].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i1 }) }),
-        fetch(`/api/providers/${next[i2].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i2 }) }),
+        fetch(`/api/providers/${next[i1].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i1 }) }).then(expectOk),
+        fetch(`/api/providers/${next[i2].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i2 }) }).then(expectOk),
       ]);
     } catch { await fetch_(); }
   };
@@ -452,7 +456,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ testStatus: "active", lastError: "", lastErrorAt: null }),
-          })
+          }).then(expectOk)
         )
       );
       setConnections((prev) =>
