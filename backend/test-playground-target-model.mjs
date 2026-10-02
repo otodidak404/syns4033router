@@ -100,4 +100,28 @@ t("the default is fetched rather than hard-coded", () => {
     "the catalogue is the source of truth; a hard-coded id would go stale");
 });
 
+// A stray JSX block left at module scope parses cleanly — it is a valid
+// expression statement — so tsc and vite both accept it, and it only fails when
+// the page runs, as a ReferenceError that blanks the whole route. A browser run
+// is what caught it; this is here so the next one does not need one.
+t("no JSX sits outside a component", () => {
+  const firstImport = page.search(/^import /m);
+  assert.ok(firstImport !== -1, "the module should start with imports");
+  const head = page.slice(0, firstImport);
+  assert.ok(!head.includes("className"),
+    `JSX above the first import is module-scope and will throw at runtime:\n${head.slice(0, 400)}`);
+});
+
+t("the module opens with an import, not markup", () => {
+  const first = page.split("\n").find(l => l.trim() && !l.trim().startsWith("//"));
+  assert.ok(first.startsWith("import "),
+    `first statement should be an import, got: ${first}`);
+});
+
+t("the playground block appears exactly once", () => {
+  const n = page.split("Testing against").length - 1;
+  assert.strictEqual(n, 1,
+    `${n} copies of the chooser block; a duplicate outside the component blanks the page`);
+});
+
 console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);

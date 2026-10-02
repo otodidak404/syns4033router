@@ -1,22 +1,3 @@
-        {/* A global entry names no model, so one is chosen and shown rather than
-            demanded. Nothing to fill in — the label says what will run and offers
-            a way to change it. */}
-        {!entryNamesAModel && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-surface-2 px-3 py-2">
-            <span className="text-[11px] text-text-muted">Testing against</span>
-            <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-text-main">
-              {runnableModel || "—"}
-            </code>
-            <Button size="sm" variant="ghost" icon="swap_horiz"
-              onClick={() => setShowModelSelect(true)}>
-              Ganti
-            </Button>
-            <span className="basis-full text-[11px] text-text-muted">
-              This prompt targets every model, so it needs one concrete model to
-              test on.
-            </span>
-          </div>
-        )}
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Card, Button, Modal, Input, CardSkeleton, Toggle, ConfirmModal,
