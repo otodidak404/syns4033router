@@ -4,6 +4,55 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### /v1/models published the operator's configuration to anyone
+
+`GET /v1/models`, `/v1/models/{kind}` and `/v1/models/info` answered `200` with no
+key and returned combo names, custom prefixes, per-connection aliases and the
+whole model inventory. The outer middleware lets all of `/v1` through
+(`PUBLIC_PREFIXES`) and delegates the key check to each handler; every execution
+handler does it, the listing endpoints never did. All three now reject a request
+with no valid key, preflights included — an `OPTIONS` that answers `204` to every
+origin is a way to learn the endpoint exists. `oc/space-bunny-free` still runs
+without a key; a listing has no model in it, so it is not that case.
+
+### /v1/models/{kind} and /v1/models/info were broken for everyone
+
+`/v1/models/{kind}` was declared `GET(_request, { params })` while
+`autoRouter.ts` calls `handler(req, res, { params })`, so the handler
+destructured an Express `Response` and answered
+`500 {"message":"Cannot destructure property 'kind'"}` on every request.
+`/v1/models/image`, `/v1/models/tts`, `/v1/models/stt` and the rest have never
+worked. Fixed the signature and dropped the `await` on a plain object.
+Measured against the previous revision to confirm it was not a regression from
+the gate above.
+
+### CORS reflected any origin with credentials on
+
+Measured on the deployed instance: `Origin: https://evil.example` came back as
+`access-control-allow-origin: https://evil.example` with
+`access-control-allow-credentials: true`, and so did `Origin: null`.
+`SameSite=Lax` on the session cookie kept this from becoming a session read —
+every protected endpoint still answered `401` to an unauthenticated cross-origin
+request — but that is not a control the API should depend on, and a null origin
+is a sandboxed iframe or a `file://` page.
+
+The dashboard is served by this same app, so its requests are same-origin and
+need no CORS header at all. The middleware now reflects only a same-origin
+request or one listed in `CORS_ALLOWED_ORIGINS`, and adds the Vite dev ports only
+when `NODE_ENV !== "production"`. Note that about 70 `/v1` route handlers still
+set their own `Access-Control-Allow-Origin: *`; that is normal for a
+token-authenticated public API and is deliberately left alone — the two surfaces
+authenticate differently, cookies here and bearer headers there.
+
+- `backend/test-models-and-cors.mjs` (7 assertions) calls the compiled route
+  handlers from `dist/` and checks each refuses without a key, pins the
+  `(req, res, { params })` signature against `autoRouter.ts`, and rejects the old
+  CORS shape. Seven mutation controls: removing each gate, restoring the `[kind]`
+  signature, allowing every origin, applying dev origins in production, and
+  ignoring the allowlist.
+
+xed
+
 ### Settings import died on every call: `hashApiKey` was only re-exported
 
 `backend/src/lib/db/index.js` re-exports its repositories with

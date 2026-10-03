@@ -7,6 +7,35 @@ import {
 } from "../../../shared/constants/providers.js";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "../../../lib/localDb.js";
 import { getDisabledModels } from "../../../lib/disabledModelsDb.js";
+import { getSettings } from "../../../lib/localDb.js";
+import { validateApiKey } from "../../../lib/localDb.js";
+import { extractApiKey } from "../../../sse/services/auth.js";
+import { clientApiKeyRequired } from "../../../lib/auth/apiKeyGate.js";
+
+/**
+ * The outer auth middleware lets all of /v1 through and delegates the key check
+ * to each handler (PUBLIC_PREFIXES in src/middleware/auth.ts). Every execution
+ * handler does it; the model listing endpoints never did, so /v1/models answered
+ * 200 with no key and published the operator's configuration -- combo names,
+ * custom prefixes, per-connection aliases and the whole model inventory.
+ *
+ * There is no model in the request, so isNoAuthModel cannot exempt anything:
+ * a listing is not a call to a free provider. A client that wants to know the
+ * inventory has a key to present; oc/space-bunny-free stays reachable for
+ * execution, which is the case that was actually intended.
+ */
+async function modelsListRequiresKey(req) {
+  const settings = await getSettings();
+  if (!clientApiKeyRequired({ model: null, settings }).required) return null;
+
+  const presented = extractApiKey(req);
+  if (presented && (await validateApiKey(presented))) return null;
+
+  return Response.json(
+    { error: { message: "Missing API key", type: "authentication_error", code: "invalid_api_key" } },
+    { status: 401, headers: { "Access-Control-Allow-Origin": "*" } },
+  );
+}
 import { resolveKiroModels } from "../../../../open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "../../../../open-sse/services/qoderModels.js";
 
@@ -418,7 +447,12 @@ export async function buildModelsList(kindFilter) {
 /**
  * Handle CORS preflight
  */
-export async function OPTIONS() {
+export async function OPTIONS(req) {
+  // A preflight must not be the way round the gate: it answered 204 before the
+  // key check existed and told any origin the endpoint was reachable.
+  const denied = await modelsListRequiresKey(req).catch(() => null);
+  if (denied) return denied;
+
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -434,6 +468,9 @@ export async function OPTIONS() {
  */
 export async function GET(req, res) {
   try {
+    const denied = await modelsListRequiresKey(req);
+    if (denied) return denied;
+
     const data = await buildModelsList([LLM_KIND]);
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },

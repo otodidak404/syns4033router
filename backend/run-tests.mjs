@@ -42,8 +42,10 @@ const SUITES = [
   ["test-docs-page.mjs", false],
   ["test-media-providers-page.mjs", false],
   // imports through "@/" — needs the alias loader
-  ["test-handler-entrypoints.mjs", true],
-];
+      ["test-handler-entrypoints.mjs", true],
+      // imports the compiled route modules from dist/, also through "@/"
+      ["test-models-and-cors.mjs", true],
+    ];
 
 let failed = 0;
 let total = 0;

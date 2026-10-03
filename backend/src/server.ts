@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
@@ -34,25 +34,52 @@ const app = express();
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-// Origin allowlist is opt-in. Empty (the default) reflects any origin, which is
-// what the hosted dashboard and the CLI both need — they reach the gateway from
-// arbitrary hostnames. Set CORS_ALLOWED_ORIGINS to a comma-separated list to lock
-// it down. SameSite=Lax on the session cookie is what actually blocks cross-site
-// state-changing calls in either mode.
+// The dashboard is served by this same Express app, so its own requests are
+// same-origin and need no CORS header at all. The only genuine cross-origin
+// clients are the Vite dev server during `npm run dev`, and anyone who explicitly
+// lists a host in CORS_ALLOWED_ORIGINS.
+//
+// This used to reflect any Origin together with credentials:true. Measured
+// against the deployed instance, `Origin: https://evil.example` came back as
+// `access-control-allow-origin: https://evil.example` +
+// `access-control-allow-credentials: true`, as did `Origin: null`. SameSite=Lax
+// on the session cookie kept that from becoming a session read, but it is not a
+// control anyone should have to rely on, and a null origin is a sandboxed iframe
+// or a file:// page. Reflect only what is actually expected; send no header
+// otherwise, which is what "not allowed" looks like to a browser.
+//
+// Note that /v1 route handlers set their own `Access-Control-Allow-Origin: *`
+// (about 70 sites). That is normal for a token-authenticated public API and this
+// middleware does not override it -- the two surfaces authenticate differently,
+// cookies here, bearer headers there.
 const corsAllowlist = (process.env.CORS_ALLOWED_ORIGINS || "")
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (corsAllowlist.length === 0) return callback(null, origin || true);
-    if (origin && corsAllowlist.includes(origin)) return callback(null, true);
-    return callback(null, false);
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-9r-cli-token"],
+const DEV_CORS_ORIGINS = [
+  "http://localhost:5177", "http://127.0.0.1:5177",
+  "http://localhost:5173", "http://127.0.0.1:5173",
+];
+if (process.env.NODE_ENV !== "production") {
+  for (const o of DEV_CORS_ORIGINS) if (!corsAllowlist.includes(o)) corsAllowlist.push(o);
+}
+
+const sameOrigin = (req: Request): boolean => {
+  const host = req.headers.host;
+  if (!host) return false;
+  return (req.headers.origin || "").replace(/^https?:\/\//i, "") === host;
+};
+
+app.use(cors((req, callback) => {
+  const origin = req.headers.origin;
+  const allowed = !origin || sameOrigin(req) || corsAllowlist.includes(origin);
+  callback(null, {
+    origin: allowed && origin ? origin : false,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-9r-cli-token"],
+  });
 }));
 
 // ─── Cache Policy ─────────────────────────────────────────────────────────────

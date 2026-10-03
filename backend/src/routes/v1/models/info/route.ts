@@ -1,6 +1,22 @@
 import { PROVIDER_MODELS } from "../../../../../open-sse/config/providerModels.js";
 import { AI_PROVIDERS, ALIAS_TO_ID } from "../../../../shared/constants/providers.js";
 
+import { getSettings, validateApiKey } from "../../../../lib/localDb.js";
+import { extractApiKey } from "../../../../sse/services/auth.js";
+import { clientApiKeyRequired } from "../../../../lib/auth/apiKeyGate.js";
+
+/** See ../../models/route.ts -- the listing endpoints had no key gate. */
+async function modelsListRequiresKey(req) {
+  const settings = await getSettings();
+  if (!clientApiKeyRequired({ model: null, settings }).required) return null;
+  const presented = extractApiKey(req);
+  if (presented && (await validateApiKey(presented))) return null;
+  return Response.json(
+    { error: { message: "Missing API key", type: "authentication_error", code: "invalid_api_key" } },
+    { status: 401, headers: { "Access-Control-Allow-Origin": "*" } },
+  );
+}
+
 const KIND_ENDPOINT = {
   llm: "/v1/chat/completions",
   image: "/v1/images/generations",
@@ -84,7 +100,10 @@ function lookup(fullId) {
   return null;
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(req) {
+  const denied = await modelsListRequiresKey(req).catch(() => null);
+  if (denied) return denied;
+
   return new Response(null, {
     headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS" },
   });
@@ -92,7 +111,10 @@ export async function OPTIONS() {
 
 // GET /v1/models/info?id={alias}/{modelId} — metadata for a single model
 export async function GET_handler(req, res) {
-  const { searchParams } = new URL('http://localhost' + req.originalUrl);
+    const denied = await modelsListRequiresKey(req);
+    if (denied) return denied;
+
+    const { searchParams } = new URL('http://localhost' + req.originalUrl);
   const id = searchParams.get("id");
   if (!id) {
     return Response.json(
