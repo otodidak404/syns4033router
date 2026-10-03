@@ -27,6 +27,8 @@ const NODE_ROUTE = path.join(HERE, "src", "routes", "provider-nodes", "route.ts"
 const NODE_ID_ROUTE = path.join(HERE, "src", "routes", "provider-nodes", "[id]", "route.ts");
 const MODEL_SERVICE = path.join(HERE, "src", "sse", "services", "model.js");
 const MODAL = path.join(HERE, "..", "frontend", "src", "shared", "components", "AddCustomEmbeddingModal.jsx");
+const IMG_CORE = path.join(HERE, "..", "backend", "open-sse", "handlers", "imageGenerationCore.js");
+const IMG_BASE = path.join(HERE, "..", "backend", "open-sse", "handlers", "imageProviders", "_base.js");
 
 let pass = 0;
 const pending = [];
@@ -258,6 +260,40 @@ t("the custom embedding modal reports a rejected save", () => {
   assert.ok(/\{saveError &&/.test(modal), "saveError is never rendered");
   const validate = modal.slice(modal.indexOf("const handleValidate"), modal.indexOf("const renderValidationResult"));
   assert.ok(/if \(!res\.ok\)/.test(validate), "validate still renders a 500 body as a verdict");
+});
+
+t("a provider-supplied image URL cannot become a server-side fetch", () => {
+  // urlToBase64 did `fetch(url)` on a url taken from an upstream response body.
+  // A custom openai-compatible or custom-embedding node points at a host the
+  // operator chose, so that host chooses the url -- and the router would retrieve
+  // 169.254.169.254 and hand the bytes back as the generated image.
+  const base = fs.readFileSync(IMG_BASE, "utf8");
+  assert.ok(!/await fetch\(url\)/.test(base), "urlToBase64 fetches the url verbatim again");
+  assert.ok(/await fetchWithRedirectChecks\(url\)/.test(base),
+    "urlToBase64 does not use the SSRF-checked fetch");
+  assert.ok(base.includes('from "../../../src/lib/net/ssrf.js"'),
+    "urlToBase64 calls a guard it does not import");
+
+  // Both call sites inherit it, and both run only when the URL is a string.
+  const core = fs.readFileSync(IMG_CORE, "utf8");
+  const callers = core.match(/urlToBase64\(([^)]*)\)/g) || [];
+  assert.ok(callers.length >= 1, "the call site disappeared; re-check where this fires");
+});
+
+t("a 200 that carries no image says so instead of rendering a broken image", () => {
+  // The block was gated on data[0] existing, so { data: { data: [{ revised_prompt }] } }
+  // produced href="" (a link that reloads the page) and src={undefined} (the browser
+  // re-requesting the page).
+  assert.ok(/const imageSrc =/.test(detail), "the image source is not resolved once, up front");
+  assert.ok(/const imageReturned = kind === "image" && !!imageSrc/.test(detail),
+    "the render is not gated on an image actually existing");
+  assert.ok(/href=\{imageSrc\}/.test(detail) && /src=\{imageSrc\}/.test(detail),
+    "href and src still read the raw response shape");
+  assert.ok(!/\?\.url \|\| ""\)\}/.test(detail), "the empty href fallback is back");
+  assert.ok(/returned no image/.test(detail), "an image-less success is not reported");
+  // And it must only fire for a response that actually arrived.
+  assert.ok(/kind === "image" && result && !imageReturned/.test(detail),
+    "the notice can render before any request was made");
 });
 
 Promise.all(pending).then(() =>

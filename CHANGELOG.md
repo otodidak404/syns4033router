@@ -3,6 +3,43 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/media-providers/image` — a provider-supplied URL was fetched verbatim
+
+`imageProviders/_base.js`:
+
+```js
+export async function urlToBase64(url) {
+  const res = await fetch(url);          // no scheme, host or address check
+```
+
+Called from `imageGenerationCore.js` on `?response_format=binary`, and from
+`cloudflareAi.js`. The url is not operator input — it comes out of an upstream
+response body, which is the same thing by another route: a custom
+openai-compatible or custom-embedding node points at a host the operator chose,
+and that host decides what url to hand back. The router would then retrieve
+`169.254.169.254`, a private range, or its own neighbours and return the bytes as
+the generated image. It now goes through `fetchWithRedirectChecks`, which covers
+the redirect chain as well.
+
+Two hypotheses of mine were wrong before this one landed, both caught by checking
+rather than asserting:
+
+- `providerId === "codex"` looked like a dead branch because the media catalog is
+  keyed `cx`. The provider is `codex: { id: "codex", alias: "cx" }` — the id is
+  `codex` and the streaming path is reachable.
+- `allDisabled = total > 0 && …` with `checked={!allDisabled}` looked like a
+  toggle rendering "on" for providers with no connections. The toggle is not
+  rendered at all in that case: `{total > 0 && (…)}`.
+
+The image result block gated on `data[0]` *existing* rather than on an image
+being present, so a 200 carrying `{ data: { data: [{ revised_prompt }] } }` gave a
+Download link with `href=""` — which reloads the page — and an `<img src={undefined}>`
+that re-requested the page as an image. The source is resolved once into
+`imageSrc`, the block is gated on that, and an image-less success now says so.
+
+Two assertions, six mutations.
+
+
 ### `/dashboard/media-providers/embedding` — three nodes could share one prefix, and two of them were unreachable
 
 Probing the custom-embedding flow live rather than reading it found what reading
@@ -832,7 +869,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 334 assertions, 32 suites, all passed |
+| `npm run test` | 336 assertions, 32 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

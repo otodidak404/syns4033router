@@ -1041,6 +1041,16 @@ function GenericExampleCard({ providerId, kind }) {
   };
 
   // Streaming supported for codex image (Plus/Pro accounts) — disabled when binary output requested
+  // A 200 that carries no image is still a 200. The old gate tested for the
+  // presence of data[0], so { data: { data: [{ revised_prompt }] } } rendered a
+  // Download link with href="" and an <img src={undefined}> — the browser
+  // re-requested the page and the operator saw a broken image with no way to
+  // tell it from a successful generation.
+  const imageItem = kind === "image" ? result?.data?.data?.[0] : null;
+  const imageSrc = binaryImageUrl
+    || (imageItem?.b64_json ? `data:image/png;base64,${imageItem.b64_json}` : imageItem?.url || "");
+  const imageReturned = kind === "image" && !!imageSrc;
+
   const wantBinary = kind === "image" && imageOutputFormat === "binary";
   const useStreaming = kind === "image" && providerId === "codex" && !wantBinary;
   const apiPathWithQuery = `${apiPath}${wantBinary ? "?response_format=binary" : ""}`;
@@ -1463,11 +1473,11 @@ function GenericExampleCard({ providerId, kind }) {
           <pre className="bg-sidebar rounded-lg px-3 py-2.5 text-xs font-mono text-text-main overflow-x-auto whitespace-pre-wrap break-all opacity-70">
             {result ? resultJson : exConfig.defaultResponse}
           </pre>
-          {kind === "image" && (binaryImageUrl || result?.data?.data?.[0]) && (
+          {imageReturned && (
             <div className="mt-2">
               <div className="flex items-center justify-end mb-1.5">
                 <a
-                  href={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url || "")}
+                  href={imageSrc}
                   download="image.png"
                   className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
                 >
@@ -1476,10 +1486,15 @@ function GenericExampleCard({ providerId, kind }) {
                 </a>
               </div>
               <img
-                src={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url)}
+                src={imageSrc}
                 alt="Generated"
                 className="max-w-full rounded-lg border border-border"
               />
+            </div>
+          )}
+          {kind === "image" && result && !imageReturned && (
+            <div className="mt-2 text-xs text-red-500 break-words">
+              The provider accepted the request but returned no image — see the response below.
             </div>
           )}
           {kind === "video" && result?.data?.data?.length > 0 && (() => {
