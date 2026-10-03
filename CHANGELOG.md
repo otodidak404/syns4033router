@@ -1526,6 +1526,33 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### The console viewer could not tell a dead stream from an empty console
+
+`/dashboard/console-log` set `connected` from the EventSource's open and error handlers
+and then never rendered it, so a stream that had died looked exactly like a console with
+nothing on it. The banner now says the live stream is disconnected and that what is on
+screen may be stale.
+
+Three more in the same ninety lines:
+
+- `es.onmessage` called `JSON.parse(e.data)` with no guard. A frame that was not JSON
+  threw inside the handler, where the browser swallows it, so a corrupted frame looked
+  like a stream that had gone quiet. The catch skips that frame only, not the handler.
+- Clear awaited the DELETE and never looked at the response, so a refused or failed
+  delete left the logs on screen with nothing said. Because the UI is cleared by an SSE
+  event rather than by this call, the button looked like it had worked either way. It now
+  names the status, and clears locally so a stream that is already down does not leave a
+  stale buffer.
+- Both failures now render in an announced banner instead of going to the console.
+
+- `backend/test-console-log-page.mjs` (5 assertions) checks the frame guard and that its
+  catch does not swallow the rest of the handler, that a failed clear names the status
+  and clears the buffer, that the connection state is actually rendered rather than only
+  stored, and that the ring buffer still trims to `CONSOLE_LOG_CONFIG.maxLines`. Four
+  mutation controls, each confirmed to change the file first: removing the parse guard,
+  returning Clear to its silent `await fetch`, ungating the connection banner, and
+  dropping the buffer cap.
+
 ### A refused OAuth authorization reported success
 
 `/dashboard/callback` decided what to show with `if (!(code || error))`, so an error

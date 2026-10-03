@@ -75,6 +75,7 @@ const SUITES = [
       ["test-landing-links.mjs", false],
       ["test-skills-page.mjs", false],
       ["test-callback-page.mjs", false],
+      ["test-console-log-page.mjs", false],
     ];
 
 let failed = 0;
