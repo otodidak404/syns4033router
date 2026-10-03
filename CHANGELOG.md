@@ -1,3 +1,12 @@
+### A freshly deployed relay went straight into routing
+
+All three deploy routes created their pool with `isActive: true`. The URL had just
+been minted and had never answered a single request, and `connectionProxy.js` only
+routes through a pool whose `isActive` is true — so provider traffic was pointed at
+it immediately. The same reasoning that stopped a failed Test from switching a proxy
+off applies here: a pool that has not been tested starts switched off, and the
+operator or the Test button turns it on once it answers.
+
 ### Two of the three relays crashed on every request
 
 The Cloudflare and Deno workers read `req.headers["x-relay-target"]`, `req.method`

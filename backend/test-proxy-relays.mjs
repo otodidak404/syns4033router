@@ -242,4 +242,20 @@ t("the guard is applied to the target before the fetch", () => {
   }
 });
 
+// ── a freshly created relay is not in rotation yet ──────────────────────────
+
+for (const kind of ["vercel-deploy", "cloudflare-deploy", "deno-deploy"]) {
+  t(`a ${kind} deployment creates its pool switched off`, () => {
+    const src = fs.readFileSync(path.join(ROUTES, kind, "route.ts"), "utf8");
+    const at = src.indexOf("createProxyPool({");
+    assert.ok(at > 0, `${kind} never calls createProxyPool`);
+    const end = src.indexOf("});", at);
+    assert.ok(end > at, `${kind}: createProxyPool call is not terminated`);
+    const call = src.slice(at, end);
+    assert.ok(/isActive:\s*false/.test(call),
+      `${kind} creates its relay pool with isActive: true, so a URL nobody has ` +
+      `tested goes straight into provider routing`);
+  });
+}
+
 await drain();

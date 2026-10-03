@@ -169,7 +169,11 @@ export async function POST_handler(req, res) {
       proxyUrl: deployUrl,
       type: "cloudflare",
       noProxy: "",
-      isActive: true,
+      // A relay that has just been created has not been tested. `isActive: true`
+      // put it straight into rotation, so connectionProxy would route provider
+      // traffic through a URL nobody has ever reached. The pool starts off and
+      // the operator (or the Test button) switches it on once it answers.
+      isActive: false,
       strictProxy: false,
     });
 
