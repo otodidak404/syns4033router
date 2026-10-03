@@ -119,40 +119,44 @@ t("the frontend shows the refusal instead of a false success", () => {
     "the page reports a success it did not verify");
 });
 
+/** res.json takes one argument; walk each call to see if a second one is passed. */
+function twoArgJsonCalls(src) {
+  const out = [];
+  for (const m of src.matchAll(/res\.json\(/g)) {
+    let i = m.index + m[0].length;
+    let depth = 1;
+    let commas = 0;
+    let str = null;
+    while (i < src.length && depth > 0) {
+      const c = src[i];
+      if (str) {
+        if (c === "\\") { i += 2; continue; }
+        if (c === str) str = null;
+      } else if (c === '"' || c === "'" || c === "`") str = c;
+      else if ("([{".includes(c)) depth += 1;
+      else if (")]}\"".includes(c)) depth -= 1;
+      else if (c === "," && depth === 1) commas += 1;
+      i += 1;
+    }
+    if (commas >= 1) out.push(src.slice(0, m.index).split("\n").length);
+  }
+  return out;
+}
+
 t("no route passes a second argument to res.json", () => {
-  // res.json([body]) takes one argument. Anywhere that passed a second one -- a
-  // status, a header bag -- had it silently dropped, so a refusal answered 200 and
-  // the CORS headers on the health route never left the process.
-  const dir = path.join(HERE, "src");
   const offenders = [];
   const walk = (d) => {
     for (const f of fs.readdirSync(d, { withFileTypes: true })) {
       const full = path.join(d, f.name);
       if (f.isDirectory()) walk(full);
       else if (/\.(ts|js)$/.test(f.name)) {
-        const src = fs.readFileSync(full, "utf8");
-        for (const m of src.matchAll(/res\.json\(/g)) {
-          // Walk the argument list, tracking nesting and strings, to see if a real
-          // second argument exists rather than matching an object literal inside one.
-          let i = m.index + m[0].length;
-          let depth = 1;
-          let str = null;
-          let commas = 0;
-          while (i < src.length && depth > 0) {
-            const c = src[i];
-            if (str) { if (c === "\\") { i += 2; continue; } if (c === str) str = null; }
-            else if (c === '"' || c === "'" || c === "`") str = c;
-            else if ("([{".includes(c)) depth += 1;
-            else if (")]}".includes(c)) depth -= 1;
-            else if (c === "," && depth === 1) commas += 1;
-            i += 1;
-          }
-          if (commas >= 1) offenders.push(`${full.replace(dir + "/", "")}: ${m[0]}`);
+        for (const ln of twoArgJsonCalls(fs.readFileSync(full, "utf8"))) {
+          offenders.push(`${path.relative(path.join(HERE, "src"), full)}:${ln}`);
         }
       }
     }
   };
-  walk(dir);
+  walk(path.join(HERE, "src"));
   assert.deepEqual(offenders, [],
     `res.json was called with a second argument, which Express drops:\n${offenders.join("\n")}`);
 });
