@@ -3,10 +3,31 @@ import { createProxyPool } from "../../../models/index.js";
 
 // Relay worker source code deployed to Cloudflare
 const RELAY_WORKER_CODE = `
+// The relay fetches whatever x-relay-target names, and it runs on Vercel/Cloudflare/
+// Deno infrastructure, not on this router -- so the router's SSRF guard cannot see it.
+// Without a check here, deploying a relay publishes an open proxy that can reach the
+// host's loopback, link-local and private ranges, on the operator's own account.
+// Matched against the whole hostname, not a prefix: 127.0.0.1.nip.io is a public
+// name, and a prefix match here refused it.
+const PRIVATE = /^(?:10\.\d+\.\d+\.\d+|127\.\d+\.\d+\.\d+|0\.\d+\.\d+\.\d+|169\.254\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+)$/;
+const BLOCKED_HOST = /^(?:localhost|metadata|instance-data|.*\.internal|.*\.local)$|^\[(?:::1|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:|::ffff:)/i;
+function isForbiddenTarget(raw) {
+  let u;
+  try { u = new URL(raw); } catch { return "not a valid url"; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return "only http and https are allowed";
+  const h = u.hostname;
+  const bare = h.replace(/^\[|\]$/g, "");
+  if (PRIVATE.test(bare) || /^127\.\d+\.\d+\.?\d*$/.test(bare) || bare === "::1") {
+    return "private and loopback addresses are not reachable through a relay";
+  }
+  if (BLOCKED_HOST.test(h)) return "that host is not reachable through a relay";
+  return null;
+}
+
 export default {
   async fetch(request, env, ctx) {
-    const target = req.headers["x-relay-target"];
-    const relayPath = req.headers["x-relay-path"] || "/";
+    const target = request.headers.get("x-relay-target");
+    const relayPath = request.headers.get("x-relay-path") || "/";
     
     if (!target) {
       return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
@@ -15,14 +36,29 @@ export default {
       });
     }
 
+    const blocked = isForbiddenTarget(target);
+    if (blocked) {
+      return new Response(JSON.stringify({ error: blocked }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     const targetUrl = target.replace(/\\/$/, "") + relayPath;
+    const relayed = isForbiddenTarget(targetUrl);
+    if (relayed) {
+      return new Response(JSON.stringify({ error: relayed }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
+    }
     const newRequestInit = {
-      method: req.method,
+      method: request.method,
       headers: new Headers(request.headers),
     };
 
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      newRequestInit.body = req.body;
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      newRequestInit.body = request.body;
       newRequestInit.duplex = "half";
     }
 

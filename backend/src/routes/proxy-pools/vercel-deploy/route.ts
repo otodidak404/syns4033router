@@ -6,6 +6,29 @@ const VERCEL_API = "https://api.vercel.com";
 // Relay function source code deployed to Vercel
 // Forwards requests to target URL specified in x-relay-target header
 const RELAY_FUNCTION_CODE = `
+// The relay fetches whatever x-relay-target names, and it runs on Vercel/Cloudflare/
+// Deno infrastructure, not on this router -- so the router's SSRF guard cannot see it.
+// Without a check here, deploying a relay publishes an open proxy that can reach the
+// host's loopback, link-local and private ranges, on the operator's own account.
+// Matched against the whole hostname, not a prefix: 127.0.0.1.nip.io is a public
+// name and a prefix match here refused it.
+// Matched against the whole hostname, not a prefix: 127.0.0.1.nip.io is a public
+// name, and a prefix match here refused it.
+const PRIVATE = /^(?:10\.\d+\.\d+\.\d+|127\.\d+\.\d+\.\d+|0\.\d+\.\d+\.\d+|169\.254\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+)$/;
+const BLOCKED_HOST = /^(?:localhost|metadata|instance-data|.*\.internal|.*\.local)$|^\[(?:::1|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:|::ffff:)/i;
+function isForbiddenTarget(raw) {
+  let u;
+  try { u = new URL(raw); } catch { return "not a valid url"; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return "only http and https are allowed";
+  const h = u.hostname;
+  const bare = h.replace(/^\[|\]$/g, "");
+  if (PRIVATE.test(bare) || /^127\.\d+\.\d+\.?\d*$/.test(bare) || bare === "::1") {
+    return "private and loopback addresses are not reachable through a relay";
+  }
+  if (BLOCKED_HOST.test(h)) return "that host is not reachable through a relay";
+  return null;
+}
+
 export const config = { runtime: "edge" };
 
 export default async function handler(req) {
@@ -19,6 +42,17 @@ export default async function handler(req) {
   }
 
   const targetUrl = target.replace(/\\/$/, "") + relayPath;
+  // Checked once, on the URL that will actually be fetched. targetUrl inherits its
+  // host from target, so a check on target alone was redundant -- and it was the
+  // weaker of the two: relayPath arrives in a header and is appended, so
+  // "https://example.com" + "@evil.com/" resolves to evil.com.
+  const relayed = isForbiddenTarget(targetUrl);
+  if (relayed) {
+    return new Response(JSON.stringify({ error: relayed }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   const headers = new Headers(req.headers);
   headers.delete("x-relay-target");

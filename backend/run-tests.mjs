@@ -60,6 +60,8 @@ const SUITES = [
       // runs a real CONNECT proxy and a real refused connection
       ["test-proxy-pool-test.mjs", true],
       ["test-proxy-pools-page.mjs", false],
+      // builds and runs all three deployed relay sources
+      ["test-proxy-relays.mjs", true],
     ];
 
 let failed = 0;

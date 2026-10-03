@@ -1,3 +1,57 @@
+### Two of the three relays crashed on every request
+
+The Cloudflare and Deno workers read `req.headers["x-relay-target"]`, `req.method`
+and `req.body`, but their parameter is `request`. `ReferenceError: req is not
+defined` was thrown before any work happened, so deploying either relay produced a
+URL that returned a 500 on every call. The Vercel function takes `handler(req)` and
+was never affected.
+
+The unbound-identifier guard could not see this. It walks the AST of each file, and
+this code lives inside a template literal — to the parser it is a string. Deployable
+code is exactly where that blind spot matters, so the check now runs over the
+extracted relay source as well.
+
+### Deploying a relay published an open proxy
+
+All three relays fetched whatever `x-relay-target` named, with no check at all:
+
+```js
+const target = request.headers.get("x-relay-target");
+const response = await fetch(target, { ... });
+```
+
+The fetch happens on Vercel, Cloudflare or Deno — not on this router — so
+`checkFetchableUrl` cannot see it. A deployed relay would fetch the host's loopback,
+link-local and private ranges, on the operator's own account, for anyone who found
+the URL. Each relay now refuses a target whose scheme is not http(s) or whose host is
+a literal private, loopback, carrier-grade-NAT, link-local or internal name, answering
+403 and never reaching `fetch`.
+
+The check runs on the assembled URL rather than on the raw header. `x-relay-path` is
+appended, so `https://example.com` plus `@evil.com/` resolves to `evil.com`; the first
+version checked the header and the assembled URL separately, which was redundant
+because the assembled URL inherits its host — and the header check was the weaker of
+the two.
+
+Matching is against the whole hostname rather than a prefix, because a prefix match
+refused `127.0.0.1.nip.io`, which is an ordinary public name.
+
+- `backend/test-proxy-relays.mjs` (20 assertions) extracts each relay source from its
+  route, resolves the template literal's escapes the way the platform does, and
+  **runs it** against a stubbed fetch: a private target gets 403 with `fetch` never
+  called, a public target is relayed with its path intact, a host reached through
+  `x-relay-path` is refused, and a `file://` or `gopher://` target is refused.
+
+  Running the code replaced a scope walker I had written for the binding check. That
+  walker reported every `const` in the file as unbound, so it would have been green
+  for the wrong reason. Executing the relay cannot pass on a `ReferenceError`.
+
+  Three mutation controls, each confirmed to change the file first: restoring `req.`
+  in each of the two affected relays, and stripping the target guard. One further
+  control was invalid rather than passing — putting `req.` back into the Vercel
+  relay, whose signature is `handler(req)` and where the identifier is genuinely
+  bound.
+
 ### An expired session would have disabled every working proxy
 
 `handleHealthCheck` folded three different outcomes into one `deadIds` bucket. A
