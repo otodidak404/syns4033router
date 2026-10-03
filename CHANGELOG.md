@@ -41,7 +41,7 @@ Two corrections to my own audit, both from reading source and trusting it:
 Writing the provider assertion took three tries for the usual reason: `cx` and
 `leonardo` do not use the same container shape (`all` versus `img`/`vid`), so
 the container ids have to be read out of `CONTAINER_MAP` instead of derived from
-the provider key. Eight mutations, all caught.
+the provider key. Eleven mutations, all caught, including restoring the pre-fix state of cx and removing the iframe sandbox.
 
 
 ### Verification config: the readiness poll targeted a port this app never opens

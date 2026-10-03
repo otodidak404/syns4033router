@@ -1,18 +1,17 @@
 // /dashboard/docs is an iframe around a 253 KB static HTML file, so there is no
 // flow logic to audit — what can rot is the file itself.
 //
-// It had already rotted. It claimed:
+// It had already rotted twice.
 //
-//   POST /v1/images/generations
-//   "Generate images or videos... This endpoint handles all image and video
-//    generation requests."
+// First: it claimed POST /v1/images/generations "handles all image and video
+// generation requests", while imageGeneration.js mentions video zero times and
+// /v1/video/generations is a real endpoint with its own videoGeneration handler.
+// A video model sent to the documented endpoint landed in the image path.
 //
-// and the router has a separate /v1/video/generations routed to its own
-// videoGeneration handler, while imageGeneration.js mentions video zero times.
-// So the page told an operator to call the images endpoint for a video model —
-// which lands in the image handler — and never mentioned the endpoint that does
-// the work. Both were verified against the running deployment: each answers 400
-// "No credentials for provider", i.e. both reach their handler.
+// Second: it never mentioned cx at all — no section, no PROVIDERS entry, no
+// CONTAINER_MAP entry, no model data — for a provider serving three image
+// models. Auditing endpoints could not see it; comparing the provider list to
+// PROVIDER_MODELS could.
 import assert from "assert";
 import fs from "node:fs";
 import path from "path";
@@ -33,11 +32,8 @@ const t = (name, fn) => pending.push(
 );
 
 const html = fs.readFileSync(DOCS, "utf8");
-
-// The catalog is ESM and imports sibling modules, so it is loaded in place
-// rather than parsed or reimplemented here.
-const CATALOG = pathToFileURL(path.join(HERE, "..", "backend", "open-sse", "config", "providerModels.js")).href;
-const providerCatalog = async () => (await import(CATALOG)).PROVIDER_MODELS;
+const script = html.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
+const isMedia = (m) => m.type === "image" || m.type === "video";
 
 const norm = (x) => x.replace(/\{[^}]+\}|\[[^\]]+\]/g, "").replace(/\/+$/, "");
 
@@ -60,33 +56,34 @@ function routes(dir, prefix) {
   return out;
 }
 
-/**
- * The endpoint cards, keyed by the path in their own header.
- *
- * Not a plain `split(...).find(c => c.includes(path))`: the path appears twice
- * in this file — once in the images endpoint's description pointing here, once on
- * the card — so matching anywhere in a card returns the images card and every
- * check below passes against the wrong markup. Key on the header instead.
- */
-/** The model ids the docs ship, per provider, parsed out of the script. */
+/** The model ids the docs ship, per provider. */
 function embeddedModels() {
-  const src = html.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
-  const open = src.indexOf("const EMBEDDED_MODELS");
+  const open = script.indexOf("const EMBEDDED_MODELS");
   assert.ok(open > -1, "EMBEDDED_MODELS is gone from the docs");
-  const brace = src.indexOf("{", src.indexOf("=", open));
+  const brace = script.indexOf("{", script.indexOf("=", open));
   let depth = 0;
-  for (let i = brace; i < src.length; i++) {
-    if (src[i] === "{") depth++;
-    else if (src[i] === "}" && --depth === 0) return JSON.parse(src.slice(brace, i + 1));
+  for (let i = brace; i < script.length; i++) {
+    if (script[i] === "{") depth++;
+    else if (script[i] === "}" && --depth === 0) return JSON.parse(script.slice(brace, i + 1));
   }
   throw new Error("EMBEDDED_MODELS is not a closed object literal");
 }
 
+/**
+ * Endpoint cards, keyed by the path in their own header.
+ *
+ * Not `split(...).find(c => c.includes(path))`: the video path appears twice —
+ * in the images endpoint's description pointing here, and on its own card — so
+ * matching anywhere in a card returns the images card and every check passes
+ * against the wrong markup. Key on the header.
+ */
 const cards = new Map();
 for (const chunk of html.split('<div class="endpoint-card">').slice(1)) {
   const m = chunk.match(/endpoint-path">([^<]+)</);
   if (m) cards.set(m[1].trim(), chunk.trimStart());
 }
+
+const isMediaProvider = ([, models]) => models.some(isMedia);
 
 t("every media route in the router is documented on a card", () => {
   const missing = routes(path.join(ROUTES, "v1"), "/v1").filter((r) => /\/(images|video)\//.test(r) && !cards.has(r));
@@ -113,37 +110,34 @@ t("the video card carries its method, parameters and closing markup", () => {
   assert.ok(card.trimEnd().endsWith("</div>"), "the card is never closed");
 });
 
-t("every media provider in the router has a section and a populated list", async () => {
-  // cx was serving three image models and the page never mentioned it: the
-  // section, the PROVIDERS entry, the CONTAINER_MAP entry and the model data
-  // were all missing. Scanning for endpoints could not see this -- the endpoint
-  // was there, only the provider was undocumented.
-  const catalog = await providerCatalog();
+t("every media provider in the router is documented and wired up", async () => {
+  const { PROVIDER_MODELS: catalog } = await import(
+    pathToFileURL(path.join(HERE, "..", "backend", "open-sse", "config", "providerModels.js")).href,
+  );
   const docs = embeddedModels();
-  const missing = Object.entries(catalog)
-    .filter(([, v]) => v.some((m) => m.type === "image" || m.type === "video"))
-    .map(([k]) => k)
-    .filter((k) => !(k in docs));
+  const missing = Object.entries(catalog).filter(isMediaProvider).map(([k]) => k).filter((k) => !(k in docs));
   assert.equal(missing.length, 0, "media provider missing from the docs:\n       " + missing.join("\n       "));
 
-  // A provider needs a section, a model-list container, a PROVIDERS entry and a
-  // CONTAINER_MAP entry, or the script renders nothing under its heading.
-  const script = html.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
-  // Scope to CONTAINER_MAP: the same key appears earlier in PROVIDERS with a
-  // label instead of container ids, and matching that reads the label as one.
+  // A provider needs a section, a PROVIDERS entry and a CONTAINER_MAP entry, or
+  // the script renders nothing under its heading.
+  //
+  // Scope the map search to CONTAINER_MAP: the same key appears earlier in
+  // PROVIDERS carrying a label instead of container ids, and matching that reads
+  // the label as one.
   const containerMap = /const CONTAINER_MAP\s*=\s*\{([\s\S]*?)\n\};/.exec(script);
   assert.ok(containerMap, "CONTAINER_MAP is gone from the docs");
+
   for (const key of Object.keys(docs)) {
     assert.ok(html.includes(`class="section" id="${key}"`), `${key} has no section`);
-    const forms = [`${key}: { label:`, `'${key}': { label:`];
-    assert.ok(forms.some((f) => script.includes(f)), `${key} is not in PROVIDERS`);
+    assert.ok([`${key}: { label:`, `'${key}': { label:`].some((f) => script.includes(f)),
+      `${key} is not in PROVIDERS`);
 
     // leonardo and weavy split image and video across two containers, so the
     // container names are not derivable from the provider key — read them back
-    // out of CONTAINER_MAP rather than guessing.
-    const map = new RegExp(`(?:'|")?${key}(?:'|")?:\\s*\\{([\\s\\S]*?)\\}`).exec(containerMap[1]);
-    assert.ok(map, `${key} is not in CONTAINER_MAP`);
-    const targets = [...map[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    // out of the map rather than guessing.
+    const entry = new RegExp(`(?:'|")?${key}(?:'|")?:\\s*\\{([\\s\\S]*?)\\}`).exec(containerMap[1]);
+    assert.ok(entry, `${key} is not in CONTAINER_MAP`);
+    const targets = [...entry[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
     assert.ok(targets.length, `${key} maps to no container`);
     for (const id of targets) {
       assert.ok(html.includes(`id="${id}"`), `${key} maps to ${id}, which is not in the markup`);
@@ -151,11 +145,12 @@ t("every media provider in the router has a section and a populated list", async
   }
 });
 
-t("every image and video model documented still exists in the router", async () => {
-  const ids = new Set(Object.values(await providerCatalog()).flat().map((m) => m.id));
-  const ghost = Object.entries(embeddedModels())
-    .flatMap(([p, ms]) => ms.filter((m) => m.type === "image" || m.type === "video").map((m) => `${p}/${m.id}`))
-    .filter((x) => !ids.has(x.split("/").slice(1).join("/")));
+t("every image and video model documented is still served", async () => {
+  const { PROVIDER_MODELS: catalog } = await import(
+    pathToFileURL(path.join(HERE, "..", "backend", "open-sse", "config", "providerModels.js")).href,
+  );
+  const served = new Set(Object.values(catalog).flat().map((m) => m.id));
+  const ghost = Object.values(embeddedModels()).flat().filter(isMedia).map((m) => m.id).filter((id) => !served.has(id));
   assert.equal(ghost.length, 0, "documented but no longer served:\n       " + ghost.join("\n       "));
 });
 
@@ -166,15 +161,14 @@ t("the dead MODEL_DATA placeholder stays gone", () => {
   assert.ok(!/will be populated by fetch/.test(html), "the comment claiming a fetch is back");
 });
 
-t("the page points at the file that exists", () => {
+t("the iframe is sandboxed and points at the file that exists", () => {
   const page = fs.readFileSync(PAGE, "utf8");
-  assert.ok(fs.existsSync(DOCS), "the docs file is missing");
-  // The iframe and the "open in new tab" link must both resolve.
-  // The iframe loads a same-origin document that runs scripts, so it needs an
-  // explicit sandbox. Without allow-scripts the docs break; without
-  // allow-same-origin the styles are blocked too.
+  // The document is same-origin and runs scripts, so it needs an explicit
+  // sandbox. Without allow-scripts the docs break; without allow-same-origin the
+  // styles are blocked too.
   assert.ok(/<iframe[\s\S]{0,300}?sandbox="[^"]*allow-scripts/.test(page), "the iframe is not sandboxed");
-  assert.ok(/sandbox="[^"]*allow-same-origin/.test(page), "the iframe sandbox would block the styles");
+  assert.ok(/sandbox="[^"]*allow-same-origin/.test(page), "the sandbox would block the styles");
+
   const targets = [...page.matchAll(/(?:src|href)="(\/[^"]+\.html)"/g)].map((m) => m[1]);
   assert.ok(targets.length >= 2, "the page no longer offers both the iframe and the link");
   for (const tgt of targets) {
@@ -184,7 +178,6 @@ t("the page points at the file that exists", () => {
 });
 
 t("every documented endpoint resolves to a real route", () => {
-  // The pattern captures after the leading slash; routes carry it.
   const documented = [...new Set(
     [...html.matchAll(/\/(v1\/[a-zA-Z0-9/_-]+)/g)].map((m) => "/" + m[1]),
   )].map(norm);
