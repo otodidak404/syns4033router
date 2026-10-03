@@ -5,11 +5,14 @@ function CallbackContent() {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState("processing");
 
+  // Read here as well as inside the effect: the error panel is rendered by the
+  // component, outside that closure, and reaching into it would be a ReferenceError.
+  const error = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
+
   useEffect(() => {
     const code = searchParams.get("code");
     const state = searchParams.get("state");
-    const error = searchParams.get("error");
-    const errorDescription = searchParams.get("error_description");
 
     const callbackData = {
       code,
@@ -43,15 +46,28 @@ function CallbackContent() {
       console.log("BroadcastChannel failed:", e);
     }
 
-    try {
-      localStorage.setItem("oauth_callback", JSON.stringify({ ...callbackData, timestamp: Date.now() }));
-    } catch (e) {
-      console.log("localStorage failed:", e);
+    // The authorization code is a credential. Persisting it on every load of this route
+    // left it readable by anything on the origin until the user cleared it by hand, so
+    // it is written only when a code actually arrived.
+    if (code) {
+      try {
+        localStorage.setItem("oauth_callback", JSON.stringify({ ...callbackData, timestamp: Date.now() }))
+      } catch (e) {
+        console.log("localStorage failed:", e)
+      }
     }
 
-    if (!(code || error)) {
-      setTimeout(() => setStatus("manual"), 0);
-      return;
+    // A denied authorization arrives as ?error=... with no code. The old check was
+    // `if (!(code || error))`, which let an error fall through to "success" -- pressing
+    // Allow and then refusing at the provider showed a green tick.
+    if (error) {
+      setStatus("error")
+      return
+    }
+
+    if (!code) {
+      setTimeout(() => setStatus("manual"), 0)
+      return
     }
 
     setStatus("success");
@@ -82,6 +98,18 @@ function CallbackContent() {
             <h1 className="text-xl font-semibold mb-2">Authorization Successful!</h1>
             <p className="text-text-muted">
               {status === "success" ? "This window will close automatically..." : "You can close this tab now."}
+            </p>
+          </>
+        )}
+
+        {status === "error" && (
+          <>
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-red-600">cancel</span>
+            </div>
+            <h1 className="text-xl font-semibold mb-2">Authorization Failed</h1>
+            <p className="text-text-muted">
+              {errorDescription || error || "The provider refused the authorization."}
             </p>
           </>
         )}

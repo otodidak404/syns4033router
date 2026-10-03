@@ -1526,6 +1526,41 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### A refused OAuth authorization reported success
+
+`/dashboard/callback` decided what to show with `if (!(code || error))`, so an error
+fell through to the success branch. Pressing Allow at the provider and then refusing
+there landed on this page with a green tick reading "Authorization Successful!" — the
+user was told the connection was made when nothing had been authorized.
+
+An error is now checked first and gets its own panel that shows the provider's
+`error_description`, falling back to `error` and then to a sentence of its own.
+
+### The authorization code was left in localStorage
+
+The callback wrote the full callback URL, `code` and `state` included, to
+`localStorage.oauth_callback` on every load of this route, and nothing ever removed it.
+An authorization code is a credential; leaving one on the origin until the user
+cleared it by hand meant anything else running on the origin could read it. It is now
+written only when a code actually arrived.
+
+- `backend/test-callback-page.mjs` (7 assertions) runs the decision table for all four
+  cases — completed, refused, error-with-a-code, and neither — and checks the branch
+  order in the source, that the error panel exists and names what the provider said,
+  and that the store is gated on a code having arrived. Three mutation controls, each
+  confirmed to change the file first: restoring the combined guard, ungating the error
+  panel, and ungating the store.
+
+  The branch-order assertion first scanned raw text and matched this commit's own
+  comment, which quotes the old expression verbatim. It now strips comments before
+  looking for anything in them.
+
+The error panel first read `error` and `error_description` from the effect's closure,
+which the component body cannot see — a ReferenceError on a page whose whole job is to
+report a failure. `test-unbound-identifiers.mjs` caught it in the same run; two mutation
+controls confirm it still does, by moving the declarations back inside the effect and by
+removing one of them.
+
 ### The skills page could not tell a failed load from an empty one
 
 `/dashboard/skills` loads three things in parallel — assignments, providers and aliases

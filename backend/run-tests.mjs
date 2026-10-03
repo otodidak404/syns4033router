@@ -74,6 +74,7 @@ const SUITES = [
       ["test-basic-chat-stream.mjs", false],
       ["test-landing-links.mjs", false],
       ["test-skills-page.mjs", false],
+      ["test-callback-page.mjs", false],
     ];
 
 let failed = 0;
