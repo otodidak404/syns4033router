@@ -48,12 +48,19 @@ export async function POST_handler(req, res, { params }) {
       : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
     const now = new Date().toISOString();
 
-    await updateProxyPool(id, {
+    // isActive decides whether connectionProxy.js will route provider traffic
+    // through this pool, and a failed probe is weak evidence about the proxy: the
+    // target may be unreachable, the network may be blocked, the relay may be down.
+    // This used to write isActive: result.ok, so one failed test silently pulled a
+    // working proxy out of production. A failure is now recorded as a failure and
+    // leaves the operator's own switch alone.
+    const patch = {
       testStatus: result.ok ? "active" : "error",
       lastTestedAt: now,
       lastError: result.ok ? null : (result.error || `Proxy test failed with status ${result.status}`),
-      isActive: result.ok,
-    });
+    };
+    if (result.ok) patch.isActive = true;
+    await updateProxyPool(id, patch);
 
     return res.json({
       ok: result.ok,

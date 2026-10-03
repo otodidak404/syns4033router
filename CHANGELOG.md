@@ -1,3 +1,44 @@
+### One failed proxy test could pull a working proxy out of production
+
+`POST /api/proxy-pools/[id]/test` wrote `isActive: result.ok`, and
+`connectionProxy.js:66` only routes provider traffic through a pool whose
+`isActive` is true. So one failed probe — a blocked target, a network outage, a
+relay that was down — silently removed a working proxy from every provider request
+that pointed at it. A failure is now recorded as `testStatus: "error"` plus
+`lastError` and leaves the operator's own switch alone. A successful test still
+sets it.
+
+### The Test button depended on Google being reachable
+
+`testProxyUrl` defaulted its target to `https://google.com/`, and nothing in the
+pool model, the route or the UI could change it — `testUrl` is a parameter that no
+caller passes. On a network that blocks Google, every proxy read as dead. The
+default is now `https://example.com/`, which IANA reserves for documentation and
+which does not redirect.
+
+### A proxy was judged partly on a redirect chain
+
+The probe used undici's default redirect following, so `google.com` →
+`www.google.com` meant a working proxy was only "working" if a *second* request
+through it also succeeded. It now sends `redirect: "manual"`, which also means a
+3xx is a successful hop rather than a failure — the proxy carried the request.
+
+- `backend/test-proxy-pool-test.mjs` (12 assertions) drives the compiled route over
+  a real database with nothing mocked. MockAgent cannot be used here: the probe
+  passes an explicit `ProxyAgent` as the dispatcher, which bypasses the global
+  dispatcher entirely. Instead a real CONNECT proxy runs in-process for the success
+  cases, a closed local port supplies a real `ECONNREFUSED` for the failure cases,
+  and a local server that answers 302 supplies the redirect measurement.
+
+  Four mutation controls, all confirmed to change the file before being run:
+  restoring the Google target, removing `redirect: "manual"`, treating 3xx as a
+  failure, and restoring `isActive: result.ok`.
+
+  The redirect control was green at first. `example.com` does not redirect, so
+  removing `redirect: "manual"` changed nothing observable — the test was not
+  measuring the property it claimed. It now counts requests to a local `/final`
+  that is only reached by following the chain.
+
 ### The web page could not tell a failed load from an empty one
 
 `web/page.jsx` loaded with `if (res.ok) setConnections(...)` inside a

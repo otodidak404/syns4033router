@@ -57,6 +57,8 @@ const SUITES = [
       ["test-web-fetch-flow.mjs", true],
       // drives handleFetch over the real auth and db modules
       ["test-web-handler-branches.mjs", true],
+      // runs a real CONNECT proxy and a real refused connection
+      ["test-proxy-pool-test.mjs", true],
     ];
 
 let failed = 0;

@@ -1,6 +1,10 @@
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 
-const DEFAULT_TEST_URL = "https://google.com/";
+// IANA reserves example.com for documentation and it does not redirect, so the
+// verdict reflects the proxy hop rather than a third party being reachable. It
+// used to be https://google.com/, which a network that blocks Google turned into
+// a dead proxy -- and a failed test deactivated the pool.
+const DEFAULT_TEST_URL = "https://example.com/";
 const DEFAULT_TIMEOUT_MS = 8000;
 
 function getErrorMessage(err) {
@@ -59,6 +63,10 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
       const res = await undiciFetch(normalizedTestUrl, {
         method: "HEAD",
         dispatcher,
+        // Follow the hop, not the redirect chain: undici followed
+        // google.com -> www.google.com, so a working proxy was judged partly on
+        // whether a second request through it also succeeded.
+        redirect: "manual",
         signal: controller.signal,
         headers: {
           "User-Agent": "SYNS4033ROUTER",
@@ -66,7 +74,8 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
       });
 
       return {
-        ok: res.ok,
+        // 3xx with redirect:"manual" still means the proxy carried the request.
+        ok: res.ok || (res.status >= 300 && res.status < 400),
         status: res.status,
         statusText: res.statusText,
         url: normalizedTestUrl,
