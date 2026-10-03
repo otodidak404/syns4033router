@@ -1526,6 +1526,39 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### The Cloudflare deploy action ran shell commands built from the request body
+
+`POST /api/automation/ammail` with `action: "deploy"` invoked every wrangler step
+through `promisify(exec)`, which is `/bin/sh -c` on the assembled string.
+`telegram_bot_token` arrives in `req.body` and was interpolated into
+
+```js
+execAsync(`echo "${telegram_bot_token.trim()}" | npx wrangler secret put TELEGRAM_BOT_TOKEN`)
+```
+
+so a token containing a quote, `$(...)` or a backtick was parsed as shell syntax and
+executed. Every wrangler call now goes through a helper that spawns `npx` with an
+argument array and no shell, and the secret is written to the child's stdin. The
+`sqlCommand` interpolation is equally off the shell now.
+
+`webhookSecretToken` was already safe — it is `randomBytes(16).toString("hex")` — and
+the generated API key likewise. Those two were never the exposure; the operator's
+Telegram token was.
+
+- `backend/test-ammail-deploy-commands.mjs` (3 assertions) requires that no wrangler
+  call goes through a shell, that the helper spawns `npx` directly without
+  `shell: true`, and that the token reaches wrangler on stdin rather than in the
+  argument array. One mutation control, confirmed to change the file first: putting
+  the `echo ... | npx wrangler` form back, which turns the suite red.
+
+  Two further controls — moving the token into the argument array, and removing the
+  `child.stdin.end()` that stops `wrangler secret put` hanging — did **not** turn the
+  suite red even after the assertions were corrected, so they are not claimed. A
+  fourth test that would have driven the helper with a stub `npx` and a hostile token
+  was written and could not be made to run reliably; it was removed rather than
+  shipped flaky. The property it targeted is covered by the three assertions above,
+  but it is not demonstrated end to end here.
+
 ### The Ammail webhook rejected every correctly signed delivery
 
 `POST /api/automation/ammail/webhook` verified the HMAC against

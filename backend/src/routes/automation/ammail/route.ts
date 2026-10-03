@@ -6,8 +6,33 @@ import crypto from "crypto";
 import fs from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { spawn } from "child_process";
 
 const execAsync = promisify(exec);
+
+// wrangler reads a secret from stdin, and it is invoked through execFile rather than
+// a shell so that nothing the caller supplied is ever parsed as shell syntax.
+// `echo "<token>" | npx wrangler secret put ...` gave telegram_bot_token -- which
+// arrives in the request body -- a place in the command line: a token containing a
+// quote, `$(...)` or a backtick executed as a command.
+function wrangler(args, { env, cwd, stdin } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("npx", ["wrangler", ...args], {
+      env, cwd, stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString(); });
+    child.stderr.on("data", (d) => { stderr += d.toString(); });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve({ stdout, stderr });
+      else reject(new Error(`wrangler ${args[0]} exited ${code}: ${stderr.slice(0, 400)}`));
+    });
+    if (stdin !== undefined) child.stdin.end(stdin);
+    else child.stdin.end();
+  });
+}
 
 export const dynamic = "force-dynamic";
 
@@ -249,7 +274,7 @@ export async function POST_handler(req, res) {
         // 1. Resolve D1 database
         let databaseId = "";
         try {
-          const listRes = await execAsync("npx wrangler d1 list --json", { env: execEnv, cwd });
+          const listRes = await wrangler(["d1", "list", "--json"], { env: execEnv, cwd });
           const dbs = JSON.parse(listRes.stdout);
           const found = dbs.find(d => d.name === "tempmail-9router");
           if (found) {
@@ -257,7 +282,7 @@ export async function POST_handler(req, res) {
           }
         } catch (err) {
           try {
-            const listRes = await execAsync("npx wrangler d1 list", { env: execEnv, cwd });
+            const listRes = await wrangler(["d1", "list"], { env: execEnv, cwd });
             const match = listRes.stdout.match(/tempmail-9router\s+([a-f0-9-]{36})/i);
             if (match) databaseId = match[1];
           } catch (e) {
@@ -268,11 +293,11 @@ export async function POST_handler(req, res) {
         // Create database if not found
         if (!databaseId) {
           try {
-            const createRes = await execAsync("npx wrangler d1 create tempmail-9router --json", { env: execEnv, cwd });
+            const createRes = await wrangler(["d1", "create", "tempmail-9router", "--json"], { env: execEnv, cwd });
             const createData = JSON.parse(createRes.stdout);
             databaseId = createData.uuid || createData.database_id;
           } catch (err) {
-            const createRes = await execAsync("npx wrangler d1 create tempmail-9router", { env: execEnv, cwd });
+            const createRes = await wrangler(["d1", "create", "tempmail-9router"], { env: execEnv, cwd });
             const stdout = createRes.stdout;
             const match = stdout.match(/database_id\s*=\s*"([^"]+)"/i) || stdout.match(/uuid\s*:\s*([a-f0-9-]{36})/i) || stdout.match(/([a-f0-9-]{36})/i);
             if (match) {
@@ -339,7 +364,7 @@ export async function POST_handler(req, res) {
         await fs.promises.writeFile(`${cwd}/wrangler.jsonc`, JSON.stringify(wranglerConfig, null, 2));
 
         // 3. Run database migrations
-        await execAsync("echo 'y' | npx wrangler d1 migrations apply tempmail-9router --remote", { env: execEnv, cwd });
+        await wrangler(["d1", "migrations", "apply", "tempmail-9router", "--remote"], { env: execEnv, cwd, stdin: "y\n" });
 
         // 4. Create a system API key for SYNS4033ROUTER
         const generatedApiKey = "tm_" + crypto.randomBytes(16).toString("hex");
@@ -350,20 +375,20 @@ export async function POST_handler(req, res) {
           INSERT OR REPLACE INTO api_access (user_id, api_key, quota_daily, quota_used, quota_date, granted_by, granted_at, expires_at)
           VALUES ('9router', '${generatedApiKey}', 0, 0, strftime('%Y-%m-%d', 'now'), 'admin', datetime('now'), '2099-12-31T23:59:59Z');
         `;
-        await execAsync(`npx wrangler d1 execute tempmail-9router --remote --command="${sqlCommand.replace(/\n/g, " ").replace(/"/g, '\\"')}"`, { env: execEnv, cwd });
+        await wrangler(["d1", "execute", "tempmail-9router", "--remote", `--command=${sqlCommand.replace(/\n/g, " ")}`], { env: execEnv, cwd });
 
         // 5. Save Telegram secrets
         if (telegram_bot_token) {
-          await execAsync(`echo "${telegram_bot_token.trim()}" | npx wrangler secret put TELEGRAM_BOT_TOKEN`, { env: execEnv, cwd });
+          await wrangler(["secret", "put", "TELEGRAM_BOT_TOKEN"], { env: execEnv, cwd, stdin: `${telegram_bot_token.trim()}\n` });
         } else {
-          await execAsync(`echo "123456:dummy-token" | npx wrangler secret put TELEGRAM_BOT_TOKEN`, { env: execEnv, cwd });
+          await wrangler(["secret", "put", "TELEGRAM_BOT_TOKEN"], { env: execEnv, cwd, stdin: "123456:dummy-token\n" });
         }
 
         const webhookSecretToken = crypto.randomBytes(16).toString("hex");
-        await execAsync(`echo "${webhookSecretToken}" | npx wrangler secret put TELEGRAM_WEBHOOK_SECRET`, { env: execEnv, cwd });
+        await wrangler(["secret", "put", "TELEGRAM_WEBHOOK_SECRET"], { env: execEnv, cwd, stdin: `${webhookSecretToken}\n` });
 
         // 6. Deploy Worker
-        const deployRes = await execAsync("npx wrangler deploy", { env: execEnv, cwd });
+        const deployRes = await wrangler(["deploy"], { env: execEnv, cwd });
         const deployStdout = deployRes.stdout || "";
         console.log("Wrangler deploy stdout:", deployStdout);
 
