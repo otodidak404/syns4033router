@@ -37,7 +37,28 @@ Download link with `href=""` — which reloads the page — and an `<img src={un
 that re-requested the page as an image. The source is resolved once into
 `imageSrc`, the block is gated on that, and an image-less success now says so.
 
-Two assertions, six mutations.
+The first version of that check pattern-matched the component source, which proves
+nothing about behaviour — the expression was never run. It now evaluates the same
+`binary || (b64_json ? data: : url || "")` against the shapes that matter,
+including the one that used to render a broken image, and separately asserts the
+component still computes it that way.
+
+Browser, `/image/gemini`: the page renders (1743 chars, no page errors), Output
+Format is present, and Ref Image / Mask are both absent — which is correct, and
+the reason is worth recording:
+
+```
+models with capabilities in the catalog : 4  (3x "edit", 1x ["edit"])
+models declaring "mask"                : 0
+connections available at runtime       : gemini, ollama, openrouter
+```
+
+Every edit-capable image model belongs to codex, cloudflare-ai or fal-ai, none of
+which has a connection here, so `supportsEdit` is false for everything reachable
+and the ~25 lines of Mask UI behind `supportsMask` can never render — no model
+declares that capability at all. That is untested surface, not a bug.
+
+Six mutations across the two assertions.
 
 
 ### `/dashboard/media-providers/embedding` — three nodes could share one prefix, and two of them were unreachable
@@ -869,7 +890,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 336 assertions, 32 suites, all passed |
+| `npm run test` | 337 assertions, 32 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

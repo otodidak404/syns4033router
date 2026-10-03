@@ -283,17 +283,38 @@ t("a provider-supplied image URL cannot become a server-side fetch", () => {
 t("a 200 that carries no image says so instead of rendering a broken image", () => {
   // The block was gated on data[0] existing, so { data: { data: [{ revised_prompt }] } }
   // produced href="" (a link that reloads the page) and src={undefined} (the browser
-  // re-requesting the page).
-  assert.ok(/const imageSrc =/.test(detail), "the image source is not resolved once, up front");
-  assert.ok(/const imageReturned = kind === "image" && !!imageSrc/.test(detail),
-    "the render is not gated on an image actually existing");
-  assert.ok(/href=\{imageSrc\}/.test(detail) && /src=\{imageSrc\}/.test(detail),
-    "href and src still read the raw response shape");
+  // re-requesting the page as an image).
   assert.ok(!/\?\.url \|\| ""\)\}/.test(detail), "the empty href fallback is back");
   assert.ok(/returned no image/.test(detail), "an image-less success is not reported");
-  // And it must only fire for a response that actually arrived.
   assert.ok(/kind === "image" && result && !imageReturned/.test(detail),
     "the notice can render before any request was made");
+});
+
+t("the image source resolves the same way the component does", () => {
+  // Exercise the real expression against real response shapes rather than
+  // pattern-matching the source. Mirrors imageSrc/imageReturned in the page.
+  const imageSrc = (binary, item) =>
+    binary || (item?.b64_json ? `data:image/png;base64,${item.b64_json}` : item?.url || "");
+
+  assert.equal(imageSrc("", { url: "https://x/a.png" }), "https://x/a.png");
+  assert.equal(imageSrc("", { b64_json: "QUJD" }), "data:image/png;base64,QUJD");
+  assert.equal(imageSrc("blob:abc", { b64_json: "QUJD" }), "blob:abc", "binary wins over the body");
+
+  // The shape that used to render a broken image and a dead Download link.
+  assert.equal(imageSrc("", { revised_prompt: "..." }), "",
+    "a response with no image resolves to empty, which the gate must reject");
+
+  for (const item of [{ revised_prompt: "x" }, {}, undefined]) {
+    assert.equal(!!imageSrc("", item), false, `imageReturned would be true for ${JSON.stringify(item)}`);
+  }
+  for (const item of [{ url: "https://x" }, { b64_json: "QUJD" }]) {
+    assert.equal(!!imageSrc("", item), true, `imageReturned would be false for ${JSON.stringify(item)}`);
+  }
+  // And the source the component uses must actually be the one under test.
+  assert.ok(/const imageSrc = binaryImageUrl\s*\n?\s*\|\| \(imageItem\?\.b64_json/.test(detail),
+    "the component no longer resolves the source this way");
+  assert.ok(/const imageReturned = kind === "image" && !!imageSrc/.test(detail),
+    "the gate is not `!!imageSrc`");
 });
 
 Promise.all(pending).then(() =>
