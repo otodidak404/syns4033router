@@ -3,7 +3,7 @@ import {
   Card, Button, Modal, Input, CardSkeleton, Toggle, ConfirmModal,
   ModelSelectModal, SegmentedControl,
 } from "@/shared/components";
-import { PROMPT_PRESETS, GLOBAL_TARGET, applyPreset } from "./presets";
+import { PRESETS, GLOBAL_TARGET, applyPreset } from "./presets";
 
 // ── Library ────────────────────────────────────────────────────────────────
 
@@ -136,7 +136,7 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
               <input
                 value={model}
                 onChange={(e) => { setModel(e.target.value); setError(""); }}
-                placeholder="provider/model"
+                placeholder="provider/model, or * for every model"
                 className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm text-text-main outline-none focus:border-primary"
               />
               <Button
@@ -170,7 +170,7 @@ function PromptFormModal({ isOpen, entry, onClose, onSave, activeProviders, mode
             {!prompt.trim() && (
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] text-text-muted">Start from a preset:</span>
-                {PROMPT_PRESETS.map((p) => (
+                {PRESETS.map((p) => (
                   <Button
                     key={p.id}
                     onClick={() => fill(p.id)}

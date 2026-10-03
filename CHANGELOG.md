@@ -1526,6 +1526,49 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### The "All models (*)" preset could never be clicked
+
+`PROMPT_PRESETS` filters on `p.prompt`, which drops the wildcard preset because it carries
+`prompt: null` and only moves the target. The page rendered `PROMPT_PRESETS`, so that
+button was never built. `applyPreset` has a working branch for it,
+`test-sysprompt-presets.mjs` asserts that branch, and the preset carries a note saying
+what it is for — so the feature had logic, tests and documentation, and no way to reach
+it from the UI.
+
+The page now renders `PRESETS`. `PROMPT_PRESETS` is still exported for callers that
+genuinely want only the prompt-filling ones.
+
+### Nothing told the operator that `*` is a valid target
+
+The model field's placeholder read `provider/model`. The wildcard is the one target that
+applies to every model the operator has not added yet, and the only way to discover it was
+to already know it. The placeholder now names the character and what it does.
+
+### The injection path is now proved against a real database
+
+`pickEntry` is pure and was covered. `resolvePromptForRequest` was not: it reads the
+library through `getSystemPrompts()` and falls back to `GODMODE_JB`, and every existing
+test supplied its own entry list, so neither the read nor the fallback had been executed.
+
+- `backend/test-system-prompt-resolve-db.mjs` (8 assertions) writes a row through
+  `createSystemPrompt`, reads it back with `getSystemPrompts`, resolves it, and injects
+  it into a real request body — then checks that deactivating the row stops the injection
+  and that deleting it removes the prompt entirely. It also pins the fallback order: the
+  library wins over `GODMODE_JB`, the fallback applies only when the library has no match,
+  and an unmatched model with no fallback resolves to nothing rather than picking up
+  another persona. Five mutation controls against the real module: skipping the library,
+  dropping the `isActive && isLive` filter, removing the idempotence guard, letting the
+  env fallback outrank the library, and removing the fallback.
+- `backend/test-system-prompt-preset-reach.mjs` (6 assertions) checks every preset in the
+  file is reachable, that the wildcard moves the target without touching the prompt, that
+  a prompt preset does not move the model, that an unknown id leaves the form untouched,
+  and that the page does not render the filtered list under any other name. Four mutation
+  controls.
+
+What this establishes: a prompt saved through the API is read back by the resolver and
+reaches the body a provider would receive. It does **not** establish that a provider
+accepts it — that needs a real credential and a live call.
+
 ### /dashboard/system-prompt reported nothing when its requests failed
 
 Three of the page's writers swallowed every failure, which is the class this menu

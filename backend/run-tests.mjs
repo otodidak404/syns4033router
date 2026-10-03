@@ -36,6 +36,8 @@ const SUITES = [
   ["test-providers-page.mjs", false],
   ["test-system-prompt-page.mjs", false],
   ["test-system-prompt-page-flow.mjs", false],
+  ["test-system-prompt-preset-reach.mjs", false],
+  ["test-system-prompt-resolve-db.mjs", true],
   ["test-combos-page.mjs", false],
   ["test-usage-page.mjs", false],
   ["test-quota-page.mjs", false],
