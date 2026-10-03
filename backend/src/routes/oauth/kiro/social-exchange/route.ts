@@ -12,17 +12,11 @@ export async function POST_handler(req, res) {
     const { code, codeVerifier, provider } = req.body;
 
     if (!code || !codeVerifier) {
-      return res.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
     if (!provider || !["google", "github"].includes(provider)) {
-      return res.json(
-        { error: "Invalid provider" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Invalid provider" });
     }
 
     const kiroService = new KiroService();

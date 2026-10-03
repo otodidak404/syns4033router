@@ -7,7 +7,9 @@ const CORS_HEADERS = {
 };
 
 export async function GET(req, res) {
-  return res.json({ ok: true }, { headers: CORS_HEADERS });
+  // res.json takes one argument, so the second was dropped and these headers never
+  // reached the client. The health endpoint is public and read cross-origin.
+  return res.set(CORS_HEADERS).json({ ok: true });
 }
 
 export async function OPTIONS() {

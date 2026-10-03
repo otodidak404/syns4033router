@@ -68,6 +68,8 @@ const SUITES = [
       ["test-ammail-deploy-commands.mjs", false],
       ["test-automation-page-writers.mjs", false],
       ["test-token-refresh-runtime.mjs", false],
+      // exercises importDb against a real database
+      ["test-db-import-guard.mjs", false],
     ];
 
 let failed = 0;

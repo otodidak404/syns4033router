@@ -15,7 +15,9 @@ export async function POST_handler(req, res) {
     }
 
     const status = typeof result?.status === "number" ? result.status : 500;
-    return res.json({ ok: false, error: result?.error || "Proxy test failed" }, { status });
+    // res.json takes one argument; the { status } was ignored, so a failed proxy
+    // test answered HTTP 200.
+    return res.status(status).json({ ok: false, error: result?.error || "Proxy test failed" });
   } catch (err) {
     const message = err?.name === "AbortError" ? "Proxy test timed out" : (err?.message || String(err));
     return res.status(500).json({ ok: false, error: message });

@@ -1526,6 +1526,55 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### An empty database import deleted everything and reported success
+
+`importDb` is a wipe followed by inserts, so a payload with nothing to insert removes
+the entire database and then imports nothing. Measured against a seeded database:
+
+```
+before     webhook_secret: keepme    apiKeys: 1    connections: 1
+importDb({}) -> {"settings":{}, "providerConnections":[], ...}
+after      webhook_secret: (empty)   apiKeys: 0    connections: 0
+```
+
+A wrong file in the file picker took the webhook secret and every API key with it.
+An import now has to say what it is restoring: a payload carrying no settings,
+connections, nodes, pools, keys, combos or aliases is refused, and says so. A real
+export and a settings-only payload are still accepted.
+
+### Every error response in the API was answered with HTTP 200
+
+`res.json` takes one argument. Across the routes, 53 calls passed a second one — a
+status, a header bag, or both — and Express dropped it silently:
+
+```js
+return res.json({ error: "Failed to fetch pricing" }, { status: 500 });   // 200
+```
+
+So a failed pricing fetch, a bad page number in request details, an unreachable
+upstream in `usage/providers`, a refused OAuth import, a failed proxy test, a failed
+relay deploy and the health endpoint's CORS headers all behaved as if they had
+succeeded. Any client checking `res.ok`, and any monitoring reading status codes, saw
+success.
+
+All 53 now use `res.status(...).set(...).json(...)`. A guard walks every `.ts` file
+under `backend/src`, parses each `res.json(` call's argument list with nesting and
+string awareness — so an object literal inside one argument is not mistaken for a
+second argument — and fails if any call still passes one.
+
+- `backend/test-db-import-guard.mjs` (8 assertions) runs `importDb` against a real
+  database for the empty payload, payloads of empty collections, a real export, a
+  settings-only payload and non-object payloads; checks the route answers 400 rather
+  than success; and contains the repo-wide `res.json` scan. One mutation control,
+  confirmed to change the file first: putting a `res.json(body, { status })` call
+  back.
+
+  The scan's first version matched 53 sites by counting commas at depth 1, which is
+  right for the detection but wrong for the fix: six of them used a computed status
+  such as `deployRes.status`, which a numeric pattern does not match, and a first pass
+  over the files silently left those six in place. The rewriter handles both forms
+  and the count is now zero.
+
 ### Leonardo and Weavy token refresh died with a bare ENOENT
 
 `open-sse/services/tokenRefresh.js` refreshes those two providers by shelling out to

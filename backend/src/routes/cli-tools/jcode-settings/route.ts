@@ -133,10 +133,7 @@ export async function POST_handler(req, res) {
     const { baseUrl, apiKey, models } = req.body;
 
     if (!baseUrl || !apiKey) {
-      return res.json(
-        { error: "baseUrl and apiKey are required" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "baseUrl and apiKey are required" });
     }
 
     const normalizedBaseUrl = baseUrl.endsWith("/v1")
@@ -179,10 +176,7 @@ export async function POST_handler(req, res) {
     });
   } catch (error) {
     console.error("Error configuring jcode:", error);
-    return res.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: error.message });
   }
 }
 
@@ -208,9 +202,6 @@ export async function DELETE(req, res) {
     });
   } catch (error) {
     console.error("Error removing jcode configuration:", error);
-    return res.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: error.message });
   }
 }

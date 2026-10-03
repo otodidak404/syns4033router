@@ -3,10 +3,7 @@ import { killAppProcesses, spawnUpdaterAndExit } from "../../../lib/appUpdater.j
 
 export async function POST(req, res) {
   if (process.env.NODE_ENV !== "production") {
-    return res.json(
-      { success: false, message: "Update is only available in production build (9router CLI)" },
-      { status: 403 }
-    );
+    return res.status(403).json({ success: false, message: "Update is only available in production build (9router CLI)" });
   }
 
   try {

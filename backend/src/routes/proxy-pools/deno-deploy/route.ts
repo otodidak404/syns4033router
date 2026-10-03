@@ -116,15 +116,9 @@ export async function POST_handler(req, res) {
     if (!createAppRes.ok) {
       const text = await createAppRes.text().catch(() => "");
       if (createAppRes.status === 409) {
-        return res.json(
-          { error: `App "${projectName}" already exists. Choose a different name.` },
-          { status: 409 }
-        );
+        return res.status(409).json({ error: `App "${projectName}" already exists. Choose a different name.` });
       }
-      return res.json(
-        { error: `Failed to create app (${createAppRes.status}): ${text}` },
-        { status: createAppRes.status }
-      );
+      return res.status(createAppRes.status).json({ error: `Failed to create app (${createAppRes.status}): ${text}` });
     }
 
     const app = await createAppRes.json();
@@ -150,10 +144,7 @@ export async function POST_handler(req, res) {
         method: "DELETE",
         headers: { Authorization: `Bearer ${denoToken}` },
       }).catch(() => {});
-      return res.json(
-        { error: `Deploy failed (${deployRes.status}): ${text}` },
-        { status: deployRes.status }
-      );
+      return res.status(deployRes.status).json({ error: `Deploy failed (${deployRes.status}): ${text}` });
     }
 
     const revision = await deployRes.json();
@@ -181,10 +172,7 @@ export async function POST_handler(req, res) {
         method: "DELETE",
         headers: { Authorization: `Bearer ${denoToken}` },
       }).catch(() => {});
-      return res.json(
-        { error: `Deploy failed with status: ${status}` },
-        { status: 500 }
-      );
+      return res.status(500).json({ error: `Deploy failed with status: ${status}` });
     }
 
     const orgSlug = orgDomain.split(".")[0];

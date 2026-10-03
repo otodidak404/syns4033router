@@ -19,17 +19,11 @@ export async function GET_handler(req, res) {
     const endDate = searchParams.get("endDate");
     
     if (page < 1) {
-      return res.json(
-        { error: "Page must be >= 1" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Page must be >= 1" });
     }
     
     if (pageSize < 1 || pageSize > 100) {
-      return res.json(
-        { error: "PageSize must be between 1 and 100" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "PageSize must be between 1 and 100" });
     }
     
     const filter = {
@@ -49,9 +43,6 @@ export async function GET_handler(req, res) {
     return res.json(result);
   } catch (error) {
     console.error("[API] Failed to get request details:", error);
-    return res.json(
-      { error: "Failed to fetch request details" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to fetch request details" });
   }
 }

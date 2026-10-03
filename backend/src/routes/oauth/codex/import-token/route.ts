@@ -14,10 +14,7 @@ export async function POST_handler(req, res) {
     const { accessToken, name } = req.body;
 
     if (!accessToken || typeof accessToken !== "string") {
-      return res.json(
-        { error: "Access token is required" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Access token is required" });
     }
 
     const token = accessToken.trim();

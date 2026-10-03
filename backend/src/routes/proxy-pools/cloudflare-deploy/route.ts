@@ -117,10 +117,7 @@ export async function POST_handler(req, res) {
     if (!uploadRes.ok) {
       const err = await uploadRes.json().catch(() => ({}));
       console.error("Cloudflare upload error:", err);
-      return res.json(
-        { error: err.errors?.[0]?.message || "Failed to upload Worker to Cloudflare" },
-        { status: uploadRes.status }
-      );
+      return res.status(uploadRes.status).json({ error: err.errors?.[0]?.message || "Failed to upload Worker to Cloudflare" });
     }
 
     // 2. Enable workers.dev subdomain for the script
@@ -157,10 +154,7 @@ export async function POST_handler(req, res) {
     }
 
     if (!deployUrl) {
-       return res.json(
-        { error: "Worker deployed but failed to retrieve workers.dev subdomain. Make sure you have setup a workers.dev subdomain in Cloudflare Dashboard." },
-        { status: 400 }
-      );
+       return res.status(400).json({ error: "Worker deployed but failed to retrieve workers.dev subdomain. Make sure you have setup a workers.dev subdomain in Cloudflare Dashboard." });
     }
 
     // Create proxy pool entry with type cloudflare

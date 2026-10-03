@@ -105,13 +105,10 @@ export async function DELETE_handler(req, res, { params }) {
     const boundConnectionCount = countBoundConnections(connections, id);
 
     if (boundConnectionCount > 0) {
-      return res.json(
-        {
+      return res.status(409).json({
           error: "Proxy pool is currently in use",
           boundConnectionCount,
-        },
-        { status: 409 }
-      );
+        });
     }
 
     await deleteProxyPool(id);

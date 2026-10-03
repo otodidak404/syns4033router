@@ -11,10 +11,7 @@ export async function POST_handler(req, res) {
     const { refreshToken } = req.body;
 
     if (!refreshToken || typeof refreshToken !== "string") {
-      return res.json(
-        { error: "Refresh token is required" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Refresh token is required" });
     }
 
     const kiroService = new KiroService();

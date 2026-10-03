@@ -28,9 +28,9 @@ export async function POST_handler(req, res) {
     return res.json({ success: true });
   } catch (error) {
     console.log("Error importing database:", error);
-    return res.json(
-      { error: error?.message || "Failed to import database" },
-      { status: 400 }
-    );
+    // res.json takes one argument. Passing { status } as a second was ignored, so a
+    // refused import answered HTTP 200 -- and the dashboard, which checks res.ok,
+    // reported it as a successful restore.
+    return res.status(400).json({ error: error?.message || "Failed to import database" });
   }
 }

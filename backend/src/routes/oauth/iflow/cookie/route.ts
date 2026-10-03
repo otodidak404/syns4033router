@@ -43,18 +43,12 @@ export async function POST_handler(req, res) {
 
     if (!getResponse.ok) {
       const errorText = await getResponse.text();
-      return res.json(
-        { error: `Failed to fetch API key info: ${errorText}` },
-        { status: getResponse.status }
-      );
+      return res.status(getResponse.status).json({ error: `Failed to fetch API key info: ${errorText}` });
     }
 
     const getResult = await getResponse.json();
     if (!getResult.success) {
-      return res.json(
-        { error: `API key fetch failed: ${getResult.message}` },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: `API key fetch failed: ${getResult.message}` });
     }
 
     const keyData = getResult.data;
@@ -81,18 +75,12 @@ export async function POST_handler(req, res) {
 
     if (!postResponse.ok) {
       const errorText = await postResponse.text();
-      return res.json(
-        { error: `Failed to refresh API key: ${errorText}` },
-        { status: postResponse.status }
-      );
+      return res.status(postResponse.status).json({ error: `Failed to refresh API key: ${errorText}` });
     }
 
     const postResult = await postResponse.json();
     if (!postResult.success) {
-      return res.json(
-        { error: `API key refresh failed: ${postResult.message}` },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: `API key refresh failed: ${postResult.message}` });
     }
 
     const refreshedKey = postResult.data;

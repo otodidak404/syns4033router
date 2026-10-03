@@ -30,10 +30,7 @@ export async function PUT_handler(req, res) {
     // Check if DNS is enabled for this tool
     const status = await getMitmStatus();
     if (!status.dnsStatus || !status.dnsStatus[tool]) {
-      return res.json(
-        { error: `DNS must be enabled for ${tool} before editing model mappings` },
-        { status: 403 }
-      );
+      return res.status(403).json({ error: `DNS must be enabled for ${tool} before editing model mappings` });
     }
 
     const filtered = {};

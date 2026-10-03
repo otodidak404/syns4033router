@@ -6,10 +6,7 @@ export async function POST_handler(req, res) {
     const { locale } = req.body;
     
     if (!locale || !isSupportedLocale(locale)) {
-      return res.json(
-        { error: "Invalid locale" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Invalid locale" });
     }
 
     const normalized = normalizeLocale(locale);
@@ -21,9 +18,6 @@ export async function POST_handler(req, res) {
 
     return res.json({ success: true, locale: normalized });
   } catch (error) {
-    return res.json(
-      { error: "Failed to set locale" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to set locale" });
   }
 }

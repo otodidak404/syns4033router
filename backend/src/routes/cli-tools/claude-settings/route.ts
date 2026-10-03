@@ -81,10 +81,7 @@ export async function GET(req, res) {
     });
   } catch (error) {
     console.log("Error checking claude settings:", error);
-    return res.json(
-      { error: "Failed to check claude settings" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to check claude settings" });
   }
 }
 
@@ -94,10 +91,7 @@ export async function POST_handler(req, res) {
     const { env } = req.body;
     
     if (!env || typeof env !== "object") {
-      return res.json(
-        { error: "Invalid env object" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Invalid env object" });
     }
 
     const settingsPath = getClaudeSettingsPath();
@@ -143,10 +137,7 @@ export async function POST_handler(req, res) {
     });
   } catch (error) {
     console.log("Error updating claude settings:", error);
-    return res.json(
-      { error: "Failed to update claude settings" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to update claude settings" });
   }
 }
 
@@ -201,10 +192,7 @@ export async function DELETE(req, res) {
     });
   } catch (error) {
     console.log("Error resetting claude settings:", error);
-    return res.json(
-      { error: "Failed to reset claude settings" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to reset claude settings" });
   }
 }
 

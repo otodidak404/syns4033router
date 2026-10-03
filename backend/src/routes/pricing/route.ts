@@ -12,10 +12,7 @@ export async function GET(req, res) {
     return res.json(pricing);
   } catch (error) {
     console.error("Error fetching pricing:", error);
-    return res.json(
-      { error: "Failed to fetch pricing" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to fetch pricing" });
   }
 }
 
@@ -30,43 +27,28 @@ export async function PATCH_handler(req, res) {
 
     // Validate body structure
     if (typeof body !== "object" || body === null) {
-      return res.json(
-        { error: "Invalid pricing data format" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Invalid pricing data format" });
     }
 
     // Validate pricing structure
     for (const [provider, models] of Object.entries(body)) {
       if (typeof models !== "object" || models === null) {
-        return res.json(
-          { error: `Invalid pricing for provider: ${provider}` },
-          { status: 400 }
-        );
+        return res.status(400).json({ error: `Invalid pricing for provider: ${provider}` });
       }
 
       for (const [model, pricing] of Object.entries(models)) {
         if (typeof pricing !== "object" || pricing === null) {
-          return res.json(
-            { error: `Invalid pricing for model: ${provider}/${model}` },
-            { status: 400 }
-          );
+          return res.status(400).json({ error: `Invalid pricing for model: ${provider}/${model}` });
         }
 
         // Validate pricing fields
         const validFields = ["input", "output", "cached", "reasoning", "cache_creation"];
         for (const [key, value] of Object.entries(pricing)) {
           if (!validFields.includes(key)) {
-            return res.json(
-              { error: `Invalid pricing field: ${key} for ${provider}/${model}` },
-              { status: 400 }
-            );
+            return res.status(400).json({ error: `Invalid pricing field: ${key} for ${provider}/${model}` });
           }
           if (typeof value !== "number" || isNaN(value) || value < 0) {
-            return res.json(
-              { error: `Invalid pricing value for ${key} in ${provider}/${model}: must be non-negative number` },
-              { status: 400 }
-            );
+            return res.status(400).json({ error: `Invalid pricing value for ${key} in ${provider}/${model}: must be non-negative number` });
           }
         }
       }
@@ -76,10 +58,7 @@ export async function PATCH_handler(req, res) {
     return res.json(updatedPricing);
   } catch (error) {
     console.error("Error updating pricing:", error);
-    return res.json(
-      { error: "Failed to update pricing" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to update pricing" });
   }
 }
 
@@ -109,10 +88,7 @@ export async function DELETE_handler(req, res) {
     return res.json(pricing);
   } catch (error) {
     console.error("Error resetting pricing:", error);
-    return res.json(
-      { error: "Failed to reset pricing" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to reset pricing" });
   }
 }
 
@@ -126,9 +102,6 @@ export async function GET_DEFAULTS(req, res) {
     return res.json(defaultPricing);
   } catch (error) {
     console.error("Error fetching default pricing:", error);
-    return res.json(
-      { error: "Failed to fetch default pricing" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to fetch default pricing" });
   }
 }

@@ -56,10 +56,7 @@ export async function GET(req, res) {
     });
   } catch (error) {
     console.error("[API] Failed to get model availability:", error);
-    return res.json(
-      { error: "Failed to fetch model availability" },
-      { status: 500 },
-    );
+    return res.status(500).json({ error: "Failed to fetch model availability" });
   }
 }
 
@@ -95,9 +92,6 @@ export async function POST_handler(req, res) {
     return res.json({ ok: true });
   } catch (error) {
     console.error("[API] Failed to clear model cooldown:", error);
-    return res.json(
-      { error: "Failed to clear cooldown" },
-      { status: 500 },
-    );
+    return res.status(500).json({ error: "Failed to clear cooldown" });
   }
 }

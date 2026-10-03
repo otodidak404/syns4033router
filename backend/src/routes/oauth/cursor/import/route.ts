@@ -15,17 +15,11 @@ export async function POST_handler(req, res) {
     const { accessToken, machineId } = req.body;
 
     if (!accessToken || typeof accessToken !== "string") {
-      return res.json(
-        { error: "Access token is required" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Access token is required" });
     }
 
     if (!machineId || typeof machineId !== "string") {
-      return res.json(
-        { error: "Machine ID is required" },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: "Machine ID is required" });
     }
 
     const cursorService = new CursorService();

@@ -34,9 +34,6 @@ export async function GET(req, res) {
     return res.json({ providers });
   } catch (error) {
     console.error("[API] Failed to get providers:", error);
-    return res.json(
-      { error: "Failed to fetch providers" },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: "Failed to fetch providers" });
   }
 }

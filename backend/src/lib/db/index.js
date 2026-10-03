@@ -127,10 +127,35 @@ function isHashedKey(value) {
   return typeof value === "string" && HASHED_KEY.test(value);
 }
 
+const IMPORT_TABLES = [
+  "settings", "providerConnections", "providerNodes", "proxyPools",
+  "apiKeys", "combos", "modelAliases", "customModels", "mitmAlias", "pricing",
+];
+
 export async function importDb(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
+
+  // Everything below is a wipe followed by an insert, so a payload that contains
+  // nothing to insert deletes the entire database and reports success. importDb({})
+  // did exactly that: the webhook secret, every API key and every connection gone,
+  // answered with success. A restore has to say what it is restoring.
+  const present = IMPORT_TABLES.filter((k) => {
+    const v = payload[k];
+    if (v === undefined || v === null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") return Object.keys(v).length > 0;
+    return v !== "";
+  });
+  if (present.length === 0) {
+    throw new Error(
+      "Refusing to import an empty database: the payload contains no settings, " +
+      "connections, nodes, pools, API keys, combos or aliases. If this is meant to " +
+      "clear everything, delete the records from the dashboard instead.",
+    );
+  }
+
   const db = await getAdapter();
 
   await db.transaction(async () => {
