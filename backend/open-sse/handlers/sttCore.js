@@ -56,7 +56,7 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
 }
 
 // AssemblyAI: upload → submit → poll (max 120s)
-async function transcribeAssemblyAI(cfg, file, model, token) {
+async function transcribeAssemblyAI(cfg, file, model, token, formData) {
   const auth = buildAuthHeaders(cfg, token);
   const buf = await file.arrayBuffer();
   const up = await fetch("https://api.assemblyai.com/v2/upload", {
@@ -68,7 +68,16 @@ async function transcribeAssemblyAI(cfg, file, model, token) {
   const sub = await fetch(cfg.baseUrl, {
     method: "POST",
     headers: { ...auth, "Content-Type": "application/json" },
-    body: JSON.stringify({ audio_url: upload_url, speech_models: [model], language_detection: true }),
+    body: JSON.stringify({
+      audio_url: upload_url,
+      speech_models: [model],
+      // AssemblyAI auto-detects while language_detection is true and ignores an
+      // explicit language in that mode. These models advertise `language` in
+      // their params, so honouring it means turning detection off.
+      ...(typeof formData?.get("language") === "string" && formData.get("language").trim()
+        ? { language: formData.get("language").trim(), language_detection: false }
+        : { language_detection: true }),
+    }),
   });
   if (!sub.ok) return upstreamError(sub);
   const { id } = await sub.json();
@@ -108,10 +117,13 @@ async function transcribeGemini(cfg, file, model, token, formData) {
     : "Generate a transcript of the speech. Return only the transcribed text, no commentary.";
   if (typeof lang === "string" && lang.trim()) promptText += ` Language: ${lang.trim()}.`;
 
-  const url = `${cfg.baseUrl}/${model}:generateContent?key=${token}`;
+  const url = `${cfg.baseUrl}/${model}:generateContent`;
+  // The key used to ride in the query string, putting a credential in every
+  // access log and proxy trace between here and Google. The header is the
+  // documented alternative and behaves identically.
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": token },
     body: JSON.stringify({
       contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: mime, data: b64 } }] }],
     }),
@@ -182,7 +194,7 @@ export async function handleSttCore({ provider, model, formData, credentials }) 
   try {
     switch (cfg.format) {
       case "deepgram":        return await transcribeDeepgram(cfg, file, model, token, formData);
-      case "assemblyai":      return await transcribeAssemblyAI(cfg, file, model, token);
+      case "assemblyai":      return await transcribeAssemblyAI(cfg, file, model, token, formData);
       case "nvidia-asr":      return await transcribeNvidia(cfg, file, model, token);
       case "huggingface-asr": return await transcribeHuggingFace(cfg, file, model, token);
       case "gemini-stt":      return await transcribeGemini(cfg, file, model, token, formData);

@@ -751,8 +751,8 @@ export const PROVIDER_MODELS = {
       description: "SDXL Base 1.0 via HuggingFace Inference API. Prompt only — no additional params supported by the HF endpoint.",
       params: [], paramDefs: [] },
     // STT models
-    { id: "openai/whisper-large-v3", name: "Whisper Large v3 (HF)", type: "stt", params: ["language"] },
-    { id: "openai/whisper-small", name: "Whisper Small (HF)", type: "stt", params: ["language"] },
+    { id: "openai/whisper-large-v3", name: "Whisper Large v3 (HF)", type: "stt", params: [] },
+    { id: "openai/whisper-small", name: "Whisper Small (HF)", type: "stt", params: [] },
   ],
 
   // === Free-tier providers (synced from OmniRoute) ===

@@ -47,6 +47,8 @@ const SUITES = [
       ["test-models-and-cors.mjs", true],
       // parses every .js/.ts under src and open-sse with @babel; no alias loader
       ["test-unbound-identifiers.mjs", false],
+      // swaps globalThis.fetch, so it must run in its own process
+      ["test-stt-flow.mjs", true],
     ];
 
 let failed = 0;

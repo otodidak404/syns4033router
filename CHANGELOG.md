@@ -4,6 +4,61 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### Four STT models advertised a language setting that was thrown away
+
+`/dashboard/media-providers/stt` shows a Language field whenever the selected
+model's `params` array lists it, writes `-F "language=..."` into the curl snippet,
+and sends the field. For four models the core never read it:
+
+```
+huggingface/openai/whisper-large-v3   huggingface-asr   language dropped
+huggingface/openai/whisper-small      huggingface-asr   language dropped
+assemblyai/universal-3-pro            assemblyai        language dropped
+assemblyai/universal-2                assemblyai        language dropped
+```
+
+Set Thai, get an English transcript, no warning. AssemblyAI ignores an explicit
+language while `language_detection: true` is set, so it now turns detection off
+when one is given. HuggingFace cannot be made to honour it on this endpoint, so
+the param is removed from those two models rather than left as a control that
+does nothing. All 18 STT models now agree with what their provider format reads.
+
+### A non-multipart body answered 500 instead of 400
+
+`POST /v1/audio/transcriptions` with a JSON body returned
+`500 {"error":"Response body object should not be disturbed or locked"}`.
+`express.json()` and `express.urlencoded()` run globally in `server.ts` and drain
+the request stream for their own content types, and the route then wrapped that
+drained stream in a Web Request. The handler already had the right 400 branch;
+the request never reached it. The route now checks the content type first.
+
+### The Gemini STT key travelled in the query string
+
+`transcribeGemini` built `…:generateContent?key=<token>`, putting a credential in
+every access log and proxy trace between the router and Google. Sent as
+`x-goog-api-key` now, which is the documented alternative.
+
+### test-route-imports only checked the built output
+
+A relative import with the wrong depth in `src/` builds, passes `tsc --noEmit`,
+and passes the `dist/` sweep whenever `dist` is stale — it only fails when the
+container starts, and the auto-router aborts the **entire server** on one bad
+route file. The path added above was `../../../../` where the module lives five
+levels up. `src/routes` is now swept as well: 249 specifiers across 144 source
+files, and the resolver swaps a trailing `.js` for `.ts`, which the tree does
+routinely. Three mutation controls: wrong depth, a file that does not exist, and
+one level too deep.
+
+- `backend/test-stt-flow.mjs` (11 assertions) executes `handleSttCore` against a
+  stubbed fetch and inspects the outgoing request, so "the language reaches the
+  wire" and "the key is not in the URL" are measured rather than assumed. The
+  suite is serialised because several cases swap `globalThis.fetch`; run
+  concurrently they overwrote each other and reported five calls where there was
+  one. Four mutation controls, including a half-fix that sends the language but
+  leaves detection on.
+
+xed
+
 ### Eleven routes read a variable that was never declared
 
 `backend/test-unbound-identifiers.mjs` parses every `.js`, `.ts` and `.tsx` under
