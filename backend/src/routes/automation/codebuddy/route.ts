@@ -665,6 +665,16 @@ function executeCodeBuddySignup(accountId, jobId, idx, settings) {
         return reject(new Error("The Leonardo invite link is not configured in Settings."));
       }
 
+function missingSignupRuntime(venvPython, scriptPath) {
+  // This route drives a Python script that drives a browser, and this deployment
+  // provides neither: the image is node:22-alpine with no interpreter and no
+  // virtualenv, and the signup scripts are not in the repository. spawn() then
+  // fails with a bare ENOENT for every account, which says nothing about why.
+  const missing = [];
+  if (!fs.existsSync(venvPython)) missing.push(venvPython);
+  if (!fs.existsSync(scriptPath)) missing.push(scriptPath);
+  return missing;
+}
       const venvPython = path.resolve(process.cwd(), ".venv/bin/python");
       const scriptPath = isLeonardo 
         ? path.resolve(process.cwd(), "src/automation/leonardo_signup.py")
@@ -677,6 +687,17 @@ function executeCodeBuddySignup(accountId, jobId, idx, settings) {
         : isCloudflare
         ? path.resolve(process.cwd(), "src/automation/cloudflare_signup.py")
         : path.resolve(process.cwd(), "src/automation/codebuddy_signup.py");
+      const missingRuntime = missingSignupRuntime(venvPython, scriptPath);
+      if (missingRuntime.length) {
+        const msg = `Signup needs Python and ${scriptPath}, which this deployment does not ` +
+          `provide: ${missingRuntime.join(", ")}`;
+        await markCodeBuddyError(account.id, msg);
+        await updateCodeBuddyJobResult(jobId, idx, {
+          email: account.email, status: "failed", error: msg, ok: false,
+        });
+        return resolve();
+      }
+
       const profilesDir = isLeonardo
         ? path.resolve(process.cwd(), "profiles/leonardo")
         : isWeavy

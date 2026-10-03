@@ -62,6 +62,7 @@ const SUITES = [
       ["test-proxy-pools-page.mjs", false],
       // builds and runs all three deployed relay sources
       ["test-proxy-relays.mjs", true],
+      ["test-automation-signup-runtime.mjs", false],
     ];
 
 let failed = 0;

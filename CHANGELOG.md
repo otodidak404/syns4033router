@@ -1526,6 +1526,47 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### CodeBuddy signup could only ever fail with a bare ENOENT
+
+`POST /api/automation/codebuddy` and `POST /api/automation/codebuddy/[id]` drive a
+Python script that drives a browser. This deployment provides neither: the image is
+`node:22-alpine` with no interpreter and no virtualenv, and four of the five signup
+scripts are not in the repository at all —
+
+```
+src/automation/  cf_token_via_session.py  cloudflare_signup.py  test_proxy.py
+missing          leonardo_signup.py  weavy_signup.py  kimi_signup.py  qoder_signup.py
+missing          codebuddy_signup.py
+```
+
+and `DISPLAY: ":1"` is passed to the child, which needs an X server this image does
+not run either. Every account therefore failed with `spawn /app/.venv/bin/python
+ENOENT`, which records the failure but tells an operator nothing about why.
+
+Both routes now check for the interpreter and the selected script before spawning,
+and fail the job with a message naming both. The existing failure path was already
+correct — `child.on("error")` marks the account and the job failed instead of
+crashing the process — and is now asserted so it stays that way.
+
+This is the third family of features in this router that a container build cannot
+run. `videoProviders/weavy.js`, `tokenRefresh.js` for weavy and codebuddy, and now
+the CodeBuddy signup all shell out to Python this image does not provide. The
+Weavy video and CodeBuddy signup paths now say so. The token refresh path is not
+touched and is equally unreachable here.
+
+- `backend/test-automation-signup-runtime.mjs` (9 assertions) checks the repository
+  really is missing those scripts, that the preflight sits between resolving the
+  interpreter and spawning, that it names what is missing, and that the spawn error
+  listener survives. The preflight function is evaluated out of the route and run
+  against paths that exist and paths that do not. Five mutation controls, each
+  confirmed to change the file first: removing the preflight from either route,
+  replacing the message with the raw spawn error, removing the error listener, and
+  removing the failure record.
+
+  Two of its assertions were wrong first: `indexOf` on the helper's name matched the
+  declaration rather than the call site, and the extracted function body ran past its
+  closing brace.
+
 ### `52bd983` — Pick a default free model that actually answers
 
 The playground's auto-chosen default was the first `oc/*` id in the catalogue,
