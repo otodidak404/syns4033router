@@ -29,6 +29,8 @@ const DIST = at("dist", "routes", "v1", "models");
 const MODELS_ROUTE = path.join(DIST, "route.js");
 const KIND_ROUTE = path.join(DIST, "[kind]", "route.js");
 const INFO_ROUTE = path.join(DIST, "info", "route.js");
+const BETA_MODELS = at("dist", "routes", "v1beta", "models", "route.js");
+const BETA_PATH = at("dist", "routes", "v1beta", "models", "[...path]", "route.js");
 
 let pass = 0;
 const pending = [];
@@ -111,6 +113,64 @@ t("the router really does pass params third", () => {
   // be allowed between the name and the argument list.
   assert.ok(/\(req,\s*res,\s*\{\s*params\s*\}\)/.test(src),
     "autoRouter no longer passes { params } as the third argument");
+});
+
+// ── /v1beta, the Gemini-compatible surface ────────────────────────────────────
+
+t("the v1beta listing is refused with no key", async () => {
+  const mod = await import(BETA_MODELS);
+  const res = await mod.GET(reqNoKey(), {});
+  assert.equal(statusOf(res), 401, `expected 401, got ${statusOf(res)}`);
+  const body = await bodyOf(res);
+  assert.ok(/Missing API key/i.test(body), body.slice(0, 120));
+});
+
+// The POST path cannot be called from here: POST_handler awaits
+// ensureInitialized(), which builds the whole router and needs a booted app.
+// Its behaviour -- 401 without a key, 200 for oc/space-bunny-free, reaching the
+// provider layer with a valid one -- was verified over HTTP against a live
+// server instead. What is pinned here is the source shape that made it a 500.
+t("the v1beta route no longer dies on a bare-path Request", () => {
+  // `new Request(req.url)` throws "Failed to parse URL from /v1beta/models/…",
+  // and before that it threw ReferenceError on `request.headers`. Both turned
+  // the Gemini-compatible endpoint into a 500 for every caller.
+  const src = fs.readFileSync(at("src","routes","v1beta","models","[...path]","route.ts"), "utf8");
+  assert.ok(!/new Request\(\s*req\.url\s*,/.test(src),
+    "the Request URL must be absolute, not req.url");
+  assert.ok(/req\.protocol\s*:\/\/\$\{\s*req\.get/.test(src) ||
+             /req\.protocol/.test(src) && /req\.originalUrl/.test(src),
+    "the absolute URL is not built from protocol + host + originalUrl");
+  assert.ok(!/headers:\s*request\.headers/.test(src),
+    "`request.headers` is unbound in a (req, res, { params }) handler");
+});
+
+t("the gate runs before the request is forwarded", () => {
+  const src = fs.readFileSync(at("src","routes","v1beta","models","[...path]","route.ts"), "utf8");
+  const gate = src.indexOf("await catalogueKeyGate(req, model)");
+  const forward = src.indexOf("new Request(fullUrl");
+  assert.ok(gate > 0 && forward > 0, "gate or forward call not found");
+  assert.ok(gate < forward,
+    "the gate must run before handleChat is reachable, or fixing the 500 alone " +
+    "would have opened an unauthenticated path to every model");
+});
+
+t("the gate is one shared helper, not a copy per route", () => {
+  const helper = fs.readFileSync(at("src","lib","auth","catalogueGate.js"), "utf8");
+  assert.ok(/export async function catalogueKeyGate/.test(helper), "helper is gone");
+  for (const rel of ["v1/models/route.ts","v1/models/[kind]/route.ts","v1/models/info/route.ts",
+                     "v1beta/models/route.ts","v1beta/models/[...path]/route.ts"]) {
+    const src = fs.readFileSync(at("src","routes",...rel.split("/")), "utf8");
+    assert.ok(src.includes("catalogueKeyGate"), `${rel} does not use the shared gate`);
+    assert.ok(!/async function \w*RequiresKey/.test(src),
+      `${rel} still carries its own copy of the gate`);
+    const m = src.match(/import \{ catalogueKeyGate \} from "([^"]+)"/);
+    assert.ok(m, `${rel} has no import for the shared gate`);
+    // dirname of the route file is the directory the relative specifier is
+    // resolved against -- not the directory above it.
+    const resolved = path.resolve(path.dirname(at("src","routes",...rel.split("/"))), m[1]);
+    assert.ok(fs.existsSync(resolved) || fs.existsSync(resolved.replace(/\.js$/, ".ts")),
+      `${rel} imports ${m[1]}, which resolves to a file that does not exist`);
+  }
 });
 
 // ── CORS ──────────────────────────────────────────────────────────────────────

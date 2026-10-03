@@ -1,9 +1,13 @@
 import { PROVIDER_MODELS } from "../../../shared/constants/models.js";
+import { catalogueKeyGate } from "../../../lib/auth/catalogueGate.js";
 
 /**
  * Handle CORS preflight
  */
-export async function OPTIONS() {
+export async function OPTIONS(req) {
+  const denied = await catalogueKeyGate(req).catch(() => null);
+  if (denied) return denied;
+
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -18,6 +22,9 @@ export async function OPTIONS() {
  * Returns models in Gemini API format
  */
 export async function GET(req, res) {
+  const denied = await catalogueKeyGate(req);
+  if (denied) return denied;
+
   try {
     // Collect all models from all providers
     const models = [];

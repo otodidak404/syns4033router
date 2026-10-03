@@ -4,6 +4,49 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### /v1beta could run any model without a key, and never worked at all
+
+`POST /v1beta/models/<model>:generateContent` — the Gemini-compatible endpoint —
+had no key check whatsoever. It also answered `500
+{"error":"request is not defined"}` for every caller: the handler is declared
+`(req, res, { params })` and there is no binding named `request`, so
+`headers: request.headers` threw on the first attempt. Two dead ends in front of
+a route that was wide open — and fixing the ReferenceError on its own would have
+turned it into an unauthenticated path to every model, past `requireApiKey`. Both
+halves landed together, and a test pins the gate ahead of the forwarding call.
+
+Correcting that surfaced a third fault: `new Request(req.url)` throws
+`Failed to parse URL from /v1beta/models/…` because `req.url` is relative and is
+also rewritten by the `/v1beta` mount. Built from `protocol` + `host` +
+`originalUrl`, as the Claude-format route does.
+
+Verified over HTTP against a booted server: `401` without a key, `200` for
+`oc/space-bunny-free` without a key (the noAuth exemption applies here because
+this route does know the model), and with a valid key the request reaches the
+provider layer — `404 No active credentials for provider: ollama` on a database
+with no Ollama connection. Streaming is gated the same way.
+
+### /v1beta/models listed the provider inventory to anyone
+
+Same shape as `/v1/models`: `200` with no key, returning every provider prefix
+and model id in Gemini format. Gated now, preflight included.
+
+### One gate instead of five copies
+
+`catalogueKeyGate(req, model)` in `backend/src/lib/auth/catalogueGate.js` backs
+all five routes. A listing passes `model: null`, because it has no model and
+`isNoAuthModel` cannot exempt it; a generation passes the real model, so
+`oc/space-bunny-free` stays reachable. `backend/test-models-and-cors.mjs` also
+checks that every route resolves its import to a file that exists — `tsc` does not
+verify `.js` specifiers, and `../../../lib/auth/catalogueGate.js` in
+`v1/models/info` was silently wrong, resolving under `src/routes/`.
+
+- Six further mutation controls: removing either v1beta gate, restoring the bare
+  `req.url`, restoring `request.headers`, breaking the `info` import path, and
+  emptying the gate in `[kind]`.
+
+xed
+
 ### /v1/models published the operator's configuration to anyone
 
 `GET /v1/models`, `/v1/models/{kind}` and `/v1/models/info` answered `200` with no

@@ -1,20 +1,7 @@
 import { buildModelsList } from "../route.js";
+import { catalogueKeyGate } from "../../../../lib/auth/catalogueGate.js";
 
-import { getSettings, validateApiKey } from "../../../../lib/localDb.js";
-import { extractApiKey } from "../../../../sse/services/auth.js";
-import { clientApiKeyRequired } from "../../../../lib/auth/apiKeyGate.js";
 
-/** See ../../models/route.ts -- the listing endpoints had no key gate. */
-async function modelsListRequiresKey(req) {
-  const settings = await getSettings();
-  if (!clientApiKeyRequired({ model: null, settings }).required) return null;
-  const presented = extractApiKey(req);
-  if (presented && (await validateApiKey(presented))) return null;
-  return Response.json(
-    { error: { message: "Missing API key", type: "authentication_error", code: "invalid_api_key" } },
-    { status: 401, headers: { "Access-Control-Allow-Origin": "*" } },
-  );
-}
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
@@ -28,7 +15,7 @@ const KIND_SLUG_MAP = {
 };
 
 export async function OPTIONS(req) {
-  const denied = await modelsListRequiresKey(req).catch(() => null);
+  const denied = await catalogueKeyGate(req).catch(() => null);
   if (denied) return denied;
 
   return new Response(null, {
@@ -49,7 +36,7 @@ export async function OPTIONS(req) {
 // an Express Response and answered 500 "Cannot destructure property 'kind'" for
 // every request, so /v1/models/image and /v1/models/tts never worked at all.
 export async function GET(_request, _res, { params }) {
-  const denied = await modelsListRequiresKey(_request);
+  const denied = await catalogueKeyGate(_request);
   if (denied) return denied;
 
   try {

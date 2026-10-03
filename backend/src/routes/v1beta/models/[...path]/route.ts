@@ -1,5 +1,7 @@
 import { handleChat } from "../../../../sse/handlers/chat.js";
 import { initTranslators } from "../../../../../open-sse/translator/index.js";
+import { catalogueKeyGate } from "../../../../lib/auth/catalogueGate.js";
+
 
 let initialized = false;
 
@@ -70,6 +72,9 @@ export async function POST_handler(req, res, { params }) {
         .replace(":generateContent", "");
     }
 
+    const denied = await catalogueKeyGate(req, model);
+    if (denied) return denied;
+
     const body = req.body;
 
     // Streaming is determined by URL action suffix:
@@ -80,10 +85,15 @@ export async function POST_handler(req, res, { params }) {
     // Convert Gemini request format to OpenAI/internal format
     const convertedBody = convertGeminiToInternal(body, model, stream);
 
-    // Create new request with converted body
-    const newRequest = new Request(req.url, {
+    // Create new request with converted body.
+    // The URL must be absolute: `new Request()` rejects a bare path with
+    // "Failed to parse URL from /v1beta/models/…". req.url is relative and is also
+    // rewritten by the /v1beta mount, so build it from protocol + host +
+    // originalUrl the way the Claude-format route does.
+    const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+    const newRequest = new Request(fullUrl, {
       method: "POST",
-      headers: request.headers,
+      headers: new Headers(req.headers),
       body: JSON.stringify(convertedBody),
     });
 
