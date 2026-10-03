@@ -23,16 +23,23 @@ export async function GET_handler(req, res) {
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "Pragma": "no-cache",
           "X-Screenshot-Age": String(Math.round(age)),
+          "X-Screenshot-Status": "ok",
         },
       });
     } catch {
-      // Return 1x1 transparent pixel if no screenshot available
+      // A 1x1 transparent pixel is a valid PNG, so a poller cannot tell "nothing has
+      // been captured" from "the screen is blank" -- and with no X server in this image
+      // nothing is ever captured. Say which it is in a header.
       const pixel = Buffer.from(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
         "base64"
       );
       return new Response(pixel, {
-        headers: { "Content-Type": "image/png", "Cache-Control": "no-cache" },
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "X-Screenshot-Status": "unavailable",
+        },
       });
     }
   }

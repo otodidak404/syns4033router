@@ -1526,6 +1526,32 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### Two CodeBuddy debug routes that could never work, and did not say so
+
+`POST /api/automation/codebuddy/test-proxy` runs `src/automation/test_proxy.py`. The
+image is `node:22-alpine` and installs no Python, so the venv probe fails, the bare
+`"python3"` fallback is taken, and the spawn dies with ENOENT — stdout empty, so the
+route answered **200** with `{ ok: false, error: "Script error (exit null)" }`, which
+points at the script rather than the missing interpreter.
+
+It now checks the interpreter and the script before spawning and answers **501** naming
+what is absent. A script that runs and produces nothing is **502**, not 200.
+
+`GET /api/automation/codebuddy/debug-vnc` returned a 1x1 transparent PNG when there was
+no screenshot. A transparent pixel is a valid image, so a poller could not tell "nothing
+has been captured" from "the screen is blank" — and with no X server in this image,
+nothing is ever captured. Both the served and the fallback response now carry
+`X-Screenshot-Status: ok | unavailable`, and the placeholder's no-store header matches
+the real one so a cached blank cannot outlive a capture.
+
+- `backend/test-codebuddy-debug-routes.mjs` (4 assertions) reads the `Dockerfile` rather
+  than trusting that the runner has no Python, so this test fails if the image ever gains
+  an interpreter instead of quietly becoming meaningless. It checks that the preflight
+  runs before the spawn it prevents, that neither failure is answered 200, and that both
+  screenshot responses are labelled. Six mutation controls, each confirmed to change the
+  file first: removing the preflight, downgrading 501 and 502 to `res.json`, removing
+  either screenshot header, and removing the comment that explains the placeholder.
+
 ### The console viewer could not tell a dead stream from an empty console
 
 `/dashboard/console-log` set `connected` from the EventSource's open and error handlers
