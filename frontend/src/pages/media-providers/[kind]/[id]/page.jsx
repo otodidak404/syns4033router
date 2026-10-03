@@ -2019,14 +2019,21 @@ export default function MediaProviderDetailPage() {
       )}
 
       {/* Provider Info — config-driven, supports searchConfig, fetchConfig, ttsConfig, embeddingConfig, searchViaChat */}
-      {!isCustom && (provider.searchConfig || provider.fetchConfig || provider.ttsConfig || provider.sttConfig || provider.embeddingConfig || provider.searchViaChat) && (
+      {!isCustom && (provider.searchConfig || provider.fetchConfig || provider.ttsConfig
+        || provider.sttConfig || provider.embeddingConfig || provider.videoConfig) && (
         <ProviderInfoCard
           config={
             kind === "webFetch" ? provider.fetchConfig
               : kind === "tts" ? provider.ttsConfig
               : kind === "stt" ? provider.sttConfig
               : kind === "embedding" ? provider.embeddingConfig
-              : provider.searchConfig || { mode: "chat-completions", defaultModel: provider.searchViaChat?.defaultModel, pricingUrl: provider.searchViaChat?.pricingUrl, freeTier: provider.searchViaChat?.freeTier }
+              // Nothing above matched. Falling back to searchConfig here renders a
+              // chat-completions card titled "Video Config" (or "Image Config") on
+              // any provider that serves that kind *and* search. Leonardo has no
+              // config at all so it is safe today, but the fallthrough was one
+              // provider flag away from being wrong.
+              : kind === "webSearch" ? provider.searchConfig
+              : provider.videoConfig || null
           }
           provider={provider}
           title={`${kindConfig.label} Config`}

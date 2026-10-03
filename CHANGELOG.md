@@ -4,6 +4,65 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### runwayml offered two video models it can never generate
+
+`getVideoAdapter()` returns null for any provider outside `{ leonardo, weavy }`,
+and the core answers `400 "Provider 'runwayml' does not support video generation"`.
+The catalogue still listed `runwayml/gen4_turbo` and `runwayml/gen3a_turbo`, and
+`getProvidersByKind("video")` still put runwayml on the page — two cards whose Test
+button could only fail. Both models are gone from the catalogue, runwayml carries
+`hiddenKinds: ["video"]`, and it stays visible for image where it does work. 71
+video models remain and every one reaches an adapter.
+
+### A malformed JSON body answered 500 on every JSON route
+
+`express.json()` throws a `SyntaxError` that already carries status 400 and a
+message; the server's error handler flattened it to `500 {"error":"Internal server
+error"}`. Measured before the fix, all eight: `/v1/video/generations`,
+`/v1/images/generations`, `/v1/chat/completions`, `/v1/embeddings`,
+`/v1/audio/speech`, `/v1/search`, `/v1beta/models/x:generateContent` and
+`/api/v1/audio/transcriptions`. Tagged body-parser failures now answer 400 with
+`Invalid JSON body`, oversized bodies answer 413, and everything else still falls
+through to the 500 branch.
+
+### The provider-info card could show the wrong kind
+
+`ProviderInfoCard`'s config chain ended in
+`provider.searchConfig || { mode: "chat-completions", … }`. On a provider that
+serves video *and* search, that renders a chat-completions panel titled
+"Video Config". Leonardo has no config at all, so it was unreachable today and the
+fallthrough was one provider flag away from being wrong. Video has its own branch
+now, `webSearch` claims `searchConfig` explicitly, and `videoConfig` is part of the
+gate.
+
+### The docs still described RunwayML as a video provider
+
+`image-video-docs.html` carried both removed models in its embedded catalogue and
+described the section as "Gen-4 Turbo, Gen-3 Alpha — professional AI video
+generation". The docs guard caught the catalogue half on the first run. The prose
+now says plainly that video is not implemented for RunwayML and points at the
+providers that do serve it.
+
+### The two provider tables were edited by hand
+
+The frontend and backend copies of `providers.js` are read by different halves of
+the app, so a divergence would show as a page listing a provider the server cannot
+route. They are now asserted equal on `serviceKinds` and `hiddenKinds` for every
+provider.
+
+- `backend/test-video-flow.mjs` (12 assertions) imports the real catalogue and the
+  real adapter map rather than restating what they ought to contain. Five mutation
+  controls: disabling the parse-failed branch, unhiding runwayml in either table,
+  letting the two tables drift, and adding a video model with no adapter.
+
+  Two of them stayed green at first for reasons worth recording: the
+  `entity.parse.failed` assertion matched the same string inside the explanatory
+  comment above the branch, so disabling the branch changed nothing; and the
+  runwayml mutation was applied to the frontend file while the suite loads the
+  backend one. Both assertions were tightened rather than the mutations relaxed.
+
+xed
+
 ### Every media-provider detail page rendered blank — caught in a browser, not by any test
 
 `ConnectionsCard` gained `actionError` state anchored to

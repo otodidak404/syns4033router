@@ -51,6 +51,8 @@ const SUITES = [
       ["test-stt-flow.mjs", true],
       // reads the media-provider frontend components from disk; no alias loader
       ["test-media-shared-cards.mjs", false],
+      // reads the real catalogue and the real video adapter map
+      ["test-video-flow.mjs", true],
     ];
 
 let failed = 0;

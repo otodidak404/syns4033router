@@ -174,7 +174,33 @@ async function start() {
   app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 
   // ─── Error Handler ─────────────────────────────────────────────────────────
+  // Every JSON route answered 500 for a malformed body. express.json() throws a
+  // SyntaxError carrying status 400 and a useful message, and this handler
+  // flattened it to 500 -- so a client that sent `{nope` got "Internal server
+  // error" and no hint what was wrong. Measured across /v1/video/generations,
+  // /v1/images/generations, /v1/chat/completions, /v1/embeddings,
+  // /v1/audio/speech, /v1/search, /v1beta/...:generateContent and
+  // /api/v1/audio/transcriptions, all eight.
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    // body-parser tags its own failures: type/entity.parse.failed for a malformed
+    // body, entity.too.large for one over the limit.
+    const tagged = err as Error & { type?: string; status?: number; statusCode?: number };
+    if (tagged.type === "entity.parse.failed") {
+      if (!res.headersSent) {
+        res.status(400).json({
+          error: { message: "Invalid JSON body", type: "invalid_request_error", code: 400 },
+        });
+      }
+      return;
+    }
+    if (tagged.type === "entity.too.large") {
+      if (!res.headersSent) {
+        res.status(413).json({
+          error: { message: "Request body too large", type: "invalid_request_error", code: 413 },
+        });
+      }
+      return;
+    }
     console.error("[server] unhandled error:", err);
     if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
   });
