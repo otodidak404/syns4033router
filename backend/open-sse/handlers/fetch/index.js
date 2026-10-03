@@ -114,7 +114,7 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
     }
     return { success: false, status: 400, error: `Unsupported provider: ${provider}` };
   } catch (err) {
-    log?.("fetch handler error:", err?.message || err);
+    log?.warn?.("FETCH", `fetch handler error: ${err?.message || err}`);
     return { success: false, status: 502, error: err?.message || "Internal fetch error" };
   }
 }
@@ -140,6 +140,9 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
   }
   const d = json?.data || {};
   const text = truncate(d.markdown || d.html || d.text || "", maxCharacters);
+  if (!text) {
+    return { success: false, status: 502, error: `Firecrawl returned no content for: ${url}` };
+  }
   const title = d.metadata?.title || null;
   return {
     success: true,
@@ -167,6 +170,9 @@ async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuer
     return { success: false, status: r.res.status, error: body?.slice(0, 500) || `Jina error: ${r.res.status}` };
   }
   const text = truncate(body, maxCharacters);
+  if (!text.trim()) {
+    return { success: false, status: 502, error: `Jina returned no content for: ${url}` };
+  }
   return {
     success: true,
     data: buildData({
@@ -195,8 +201,15 @@ async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Tavily error: ${r.res.status}` };
   }
+  const failed = json?.failed_results || [];
+  if (failed.length) {
+    return { success: false, status: 502, error: failed[0]?.error || `Tavily could not fetch: ${url}` };
+  }
   const first = json?.results?.[0] || {};
   const text = truncate(first.raw_content || "", maxCharacters);
+  if (!text) {
+    return { success: false, status: 502, error: `Tavily returned no content for: ${url}` };
+  }
   return {
     success: true,
     data: buildData({
@@ -225,8 +238,17 @@ async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Exa error: ${r.res.status}` };
   }
+  const statuses = json?.statuses || [];
+  const failedStatus = statuses.find((st) => st && String(st.status).toLowerCase() === "error");
+  if (failedStatus) {
+    // Exa answers 200 even when a URL fails, and says so in `statuses`.
+    return { success: false, status: 502, error: failedStatus.error?.message || `Exa could not fetch: ${failedStatus.id || url}` };
+  }
   const first = json?.results?.[0] || {};
   const text = truncate(first.text || "", maxCharacters);
+  if (!text) {
+    return { success: false, status: 502, error: `Exa returned no content for: ${url}` };
+  }
   return {
     success: true,
     data: buildData({

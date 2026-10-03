@@ -4,6 +4,63 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### The fetch handler called its logger as a function
+
+`open-sse/handlers/fetch/index.js` ended its catch block with
+`log?.("fetch handler error:", …)`. `src/sse/handlers/fetch.js` hands the core
+`import * as log` — a module namespace object, which is never callable — so the
+`?.` guarded the null case and nothing else. Any exception raised inside a provider
+branch therefore threw a second `TypeError: log is not a function` out of the
+handler's own catch, and the request finished with no response body at all instead
+of a 502. Measured against the core with a stubbed `fetch` whose `.headers` throws:
+
+```
+before   THREW: TypeError: log is not a function
+after    {"success":false,"status":502,"error":"boom-in-headers"}
+```
+
+This is the same shape as the TTS entrypoint, `modelStr` in search, and the two dead
+frontend rollbacks — the fourth time it has turned up. It is now covered by a test
+that drives the real `handleFetchCore`.
+
+### A failed fetch came back as 200 with empty content
+
+Exa answers HTTP 200 even when a requested URL fails and records it in `statuses`;
+Tavily reports failures in `failed_results`. Neither was read, and neither provider
+checked whether it had extracted anything at all. `text: ""` was returned as
+`success: true`, so a blocked or empty page looked like a successful extraction to
+the dashboard. All four providers now answer 502 with the reason, and a real
+response still normalises to the same shape as before.
+
+  Exa's `ids: [url]` was checked against Exa's own reference rather than assumed
+  wrong: `ids` is documented as a backwards-compatible alias for `urls`, so it stays.
+
+### A stale number in the CORS comment
+
+`server.ts` notes that `/v1` handlers set their own `Access-Control-Allow-Origin: *`
+"about 70 sites". There are 38. The wildcard itself was reviewed and left in place:
+those routes authenticate with a bearer header and send no
+`Access-Control-Allow-Credentials`, so a browser cannot read a cross-origin response
+without already holding the token, and removing the header would break the third-party
+API clients the `/v1` surface exists for. The count is corrected; the other 36 sites
+outside the web menu are recorded as reviewed, not as fixed.
+
+- `backend/test-web-fetch-flow.mjs` (11 assertions) drives the real
+  `handleFetchCore` for all four providers -- success, truncation, empty content,
+  and the two upstream failure envelopes -- and checks that every provider on the
+  page has a `fetchConfig` and every provider with one is reachable from the page.
+  Five mutation controls: reverting the logger call, disabling the Exa status check,
+  disabling the Tavily failed-results check, disabling the empty-content guard, and
+  removing a `fetchConfig` from the frontend table.
+
+  The frontend/backend table comparison first reported a drift on `tavily` that did
+  not exist. The assertion was scanning text with a brace-balance reader that started
+  inside the block and stopped early; it now imports both modules and compares the
+  loaded objects. One control also went red through an assertion other than the one
+  it targets, because the mutation changed the module's shape rather than one flag.
+
+xed
+
 ### Weavy video generation could never run in this deployment
 
 `videoProviders/weavy.js` shells out to `.venv/bin/python` with

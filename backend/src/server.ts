@@ -49,7 +49,7 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 // otherwise, which is what "not allowed" looks like to a browser.
 //
 // Note that /v1 route handlers set their own `Access-Control-Allow-Origin: *`
-// (about 70 sites). That is normal for a token-authenticated public API and this
+// (38 sites as of this audit). That is normal for a token-authenticated public API and this
 // middleware does not override it -- the two surfaces authenticate differently,
 // cookies here, bearer headers there.
 const corsAllowlist = (process.env.CORS_ALLOWED_ORIGINS || "")

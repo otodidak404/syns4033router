@@ -53,6 +53,8 @@ const SUITES = [
       ["test-media-shared-cards.mjs", false],
       // reads the real catalogue and the real video adapter map
       ["test-video-flow.mjs", true],
+      // drives the real handleFetchCore against a stubbed fetch
+      ["test-web-fetch-flow.mjs", true],
     ];
 
 let failed = 0;
