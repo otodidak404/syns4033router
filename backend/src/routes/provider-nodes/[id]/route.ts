@@ -52,9 +52,11 @@ export async function PUT_handler(req, res, { params }) {
     // Editing can collide just as easily as creating: the prefix is the model
     // id namespace and resolution takes the first match, so a second node on the
     // same prefix would be silently unreachable.
+    // Exclude this node: a rename that keeps its own prefix is a legitimate
+    // edit, and matching on prefix alone rejected it with 409.
     const trimmedPrefix = prefix.trim();
     if (trimmedPrefix !== node.prefix) {
-      const clash = (await getProviderNodes()).find((n) => n.prefix === trimmedPrefix);
+      const clash = (await getProviderNodes()).find((n) => n.id !== id && n.prefix === trimmedPrefix);
       if (clash) {
         return res.status(409).json({ error: `Prefix "${trimmedPrefix}" is already used by "${clash.name}"` });
       }

@@ -212,6 +212,10 @@ t("a provider-node prefix is unique on create and on edit", () => {
     "create leaves a node type without the prefix/URL guard");
   assert.ok(/trimmedPrefix !== node\.prefix/.test(edit),
     "edit re-checks the prefix even when it was not changed");
+  // Without excluding the node being edited, renaming one while keeping its own
+  // prefix returned 409 -- live, a legal edit was refused.
+  assert.ok(/n\.id !== id && n\.prefix === trimmedPrefix/.test(edit),
+    "edit treats the node's own prefix as a collision");
   assert.ok(fs.readFileSync(MODEL_SERVICE, "utf8").includes("node.prefix === parsed.providerAlias"),
     "resolution no longer matches on prefix; re-check the uniqueness requirement");
 });
