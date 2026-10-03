@@ -1526,6 +1526,34 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### The skills page could not tell a failed load from an empty one
+
+`/dashboard/skills` loads three things in parallel — assignments, providers and aliases
+— and only acted on the ones that succeeded. Every failure went to a `console.log`,
+so a refused or failed request left the page showing no skills and no assignments with
+nothing said. That reads as "you have no skills" rather than "the request failed", and
+the three loads fail independently, so the page could also show skills without the
+provider list that the picker needs.
+
+It now names each part that did not load, keeps whatever is already on screen, clears
+the message on a successful retry, and offers one. The alias response is read as text
+and parsed defensively, since a proxy answering with HTML otherwise throws.
+
+The writers on this page were already right and are now asserted so they stay that
+way: `toggle`, `assign` and `unassign` each check `res.ok`, read their error body with
+a `.catch(() => ({}))` guard, and update local state only after the server agreed.
+
+- `backend/test-skills-page.mjs` (5 assertions) checks that a failed load is reported
+  per-part, that an unreachable server is named, that a successful load clears the
+  message, that the banner is gated on the error rather than being dead markup, and
+  that the three writers keep their status checks. Four mutation controls, each
+  confirmed to change the file first: restoring the `console.log`, removing the list
+  of failing parts, ungating the banner, and removing the clear-on-success.
+
+The routes behind this page are the best covered left in the repository — four suites,
+48 assertions, including the skill loader's unsafe-id rejection and its size cap. The
+page itself had none.
+
 ### The landing page sent visitors to someone else's repository
 
 `/dashboard/landing` renders "© 2026 codestorm. SYNS4033ROUTER" and every one of its

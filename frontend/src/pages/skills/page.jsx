@@ -69,6 +69,7 @@ export default function SkillsPage() {
   const [providers, setProviders] = useState([]);
   const [aliases, setAliases] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [assigning, setAssigning] = useState(null);
@@ -92,9 +93,27 @@ export default function SkillsPage() {
         setAssignments(d.assignments || []);
       }
       if (provRes.ok) setProviders((await provRes.json()).connections || []);
-      if (aliasRes.ok) setAliases((await aliasRes.json()).aliases || {});
+
+      if (aliasRes.ok) {
+        // A load that failed used to leave the page showing no skills and no
+        // assignments with nothing said, which reads as "you have no skills".
+        const raw = await aliasRes.text();
+        try { setAliases(JSON.parse(raw).aliases || {}); }
+        catch { setLoadError("The alias list came back as something that is not JSON."); }
+      }
+
+      const failed = [
+        msRes.ok ? null : "skill assignments",
+        provRes.ok ? null : "providers",
+        aliasRes.ok ? null : "aliases",
+      ].filter(Boolean);
+      if (failed.length) {
+        setLoadError(`Could not load ${failed.join(", ")}. Showing what is already loaded.`);
+      } else {
+        setLoadError(null);
+      }
     } catch (e) {
-      console.log("Error loading skills:", e);
+      setLoadError(`Could not reach the server: ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
@@ -159,6 +178,15 @@ export default function SkillsPage() {
 
   return (
     <div className="relative flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+      {loadError && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+          <span className="material-symbols-outlined text-[18px] shrink-0">error</span>
+          <span className="flex-1">{loadError}</span>
+          <button type="button" onClick={() => fetchData()}
+            className="material-symbols-outlined text-[16px] shrink-0 hover:opacity-70"
+            aria-label="Retry">refresh</button>
+        </div>
+      )}
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-main shadow-lg">
           <span className="material-symbols-outlined text-[18px] text-green-500">check_circle</span>

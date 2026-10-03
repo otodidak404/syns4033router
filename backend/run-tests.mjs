@@ -73,6 +73,7 @@ const SUITES = [
       // replays real SSE frames through the page's own parsing decision
       ["test-basic-chat-stream.mjs", false],
       ["test-landing-links.mjs", false],
+      ["test-skills-page.mjs", false],
     ];
 
 let failed = 0;
