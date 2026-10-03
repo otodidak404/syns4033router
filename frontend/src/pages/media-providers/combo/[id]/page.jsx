@@ -123,7 +123,9 @@ export default function ComboDetailPage() {
     if (!value || providers.includes(value)) return;
     const next = [...providers, value];
     setProviders(next);
-    await saveCombo({ models: next });
+    // Roll the chip back if the save failed, or the card claims a membership
+    // the server never accepted.
+    if (!(await saveCombo({ models: next }))) setProviders(providers);
   };
 
   const handleDeselectModel = async (model) => {
@@ -131,13 +133,17 @@ export default function ComboDetailPage() {
     if (!value || !providers.includes(value)) return;
     const next = providers.filter((p) => p !== value);
     setProviders(next);
-    await saveCombo({ models: next });
+    // Roll the chip back if the save failed, or the card claims a membership
+    // the server never accepted.
+    if (!(await saveCombo({ models: next }))) setProviders(providers);
   };
 
   const handleRemoveProvider = async (idx) => {
     const next = providers.filter((_, i) => i !== idx);
     setProviders(next);
-    await saveCombo({ models: next });
+    // Roll the chip back if the save failed, or the card claims a membership
+    // the server never accepted.
+    if (!(await saveCombo({ models: next }))) setProviders(providers);
   };
 
   const handleMove = async (idx, dir) => {
@@ -146,27 +152,46 @@ export default function ComboDetailPage() {
     if (swap < 0 || swap >= next.length) return;
     [next[idx], next[swap]] = [next[swap], next[idx]];
     setProviders(next);
-    await saveCombo({ models: next });
+    // Roll the chip back if the save failed, or the card claims a membership
+    // the server never accepted.
+    if (!(await saveCombo({ models: next }))) setProviders(providers);
   };
 
   const handleToggleRoundRobin = async (enabled) => {
-    setRoundRobin(enabled);
+    // Read first, and bail if the read failed. updateSettings merges shallowly,
+    // so PATCHing an empty object erases every other combo's strategy — one
+    // failed GET would otherwise wipe the lot.
     const settingsRes = await fetch("/api/settings", { cache: "no-store" });
-    const s = settingsRes.ok ? await settingsRes.json() : {};
+    if (!settingsRes.ok) {
+      alert("Could not read settings; round-robin unchanged");
+      return;
+    }
+    const s = await settingsRes.json();
     const updated = { ...(s.comboStrategies || {}) };
     if (enabled) updated[combo.name] = { fallbackStrategy: "round-robin" };
     else delete updated[combo.name];
-    await fetch("/api/settings", {
+
+    const res = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ comboStrategies: updated }),
     });
+    if (!res.ok) {
+      alert("Could not save round-robin setting");
+      return;
+    }
+    setRoundRobin(enabled);
   };
 
   const handleDelete = async () => {
     if (!confirm(`Delete combo "${combo.name}"?`)) return;
     const res = await fetch(`/api/combos/${id}`, { method: "DELETE" });
-    if (res.ok) navigate(getListingHref(combo.kind));
+    if (res.ok) {
+      navigate(getListingHref(combo.kind));
+      return;
+    }
+    const d = await res.json().catch(() => ({}));
+    alert(d?.error || `Delete failed (HTTP ${res.status})`);
   };
 
   const handleTest = async () => {

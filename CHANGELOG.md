@@ -3,6 +3,44 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/media-providers` — one failed GET erased every combo's round-robin strategy
+
+`combo/[id]` handleToggleRoundRobin read `/api/settings` and fell back to `{}` when
+the read failed:
+
+```js
+const s = settingsRes.ok ? await settingsRes.json() : {};
+const updated = { ...(s.comboStrategies || {}) };
+await fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ comboStrategies: updated }) });
+```
+
+Backend `updateSettings` merges shallowly — `{ ...current, ...updates }` — so
+`comboStrategies: {}` replaces the whole map rather than merging into it. One
+failed read wiped the strategy of every other combo, while the toggle still
+rendered as on. The read is now checked and bailed on, the PATCH response is
+checked before the toggle moves, and nothing is written when the read fails.
+
+Three more in the same file and page:
+
+- `handleAddModel`, `handleDeselectModel`, `handleRemoveProvider` and `handleMove`
+  all moved the chip before saving and ignored the result, so a rejected save left
+  the card showing a membership the server never accepted. All four roll back.
+  The first one was fixed in the previous pass; the other three were found by
+  asking which handlers set state and save in the same breath, which the earlier
+  scan had not been shaped to notice.
+- The SSE reader's `catch {}` around `JSON.parse` discarded an unparseable frame.
+  A dropped `done` or `error` event left both `finalData` and `streamErr` null, so
+  the Test button simply stopped with no message. Terminal frames now set the
+  error, and a stream that ends with neither a result nor an error says so.
+- Both delete handlers failed silently — one called `console.log`, the other gave
+  up. Both report the failure now, and `handleDeleteCustom` renders it.
+
+`test-media-providers-page.mjs` (7) pins all of it, including an assertion that
+`updateSettings` is still a shallow merge — if that ever deepens, the frontend
+guard stops being the only thing between a failed GET and lost configuration.
+Nine mutations, all caught.
+
+
 ### `/dashboard/docs`, second pass: the page was missing a provider, not just an endpoint
 
 Asked whether the docs were done after the endpoint fix. They were not. The first
@@ -708,7 +746,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 322 assertions, 31 suites, all passed |
+| `npm run test` | 329 assertions, 32 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

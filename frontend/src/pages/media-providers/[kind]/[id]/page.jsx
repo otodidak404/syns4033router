@@ -1091,6 +1091,7 @@ function GenericExampleCard({ providerId, kind }) {
         let buf = "";
         let finalData = null;
         let streamErr = null;
+        let partialSeen = false;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -1108,15 +1109,23 @@ function GenericExampleCard({ providerId, kind }) {
             try {
               const payload = dataStr ? JSON.parse(dataStr) : {};
               if (evt === "progress") setProgress(payload);
-              else if (evt === "partial_image") setPartialImage(payload);
+              else if (evt === "partial_image") { partialSeen = true; setPartialImage(payload); }
               else if (evt === "done") finalData = payload;
               else if (evt === "error") streamErr = payload?.message || "Stream error";
-            } catch {}
+            } catch {
+              // A dropped terminal event is how "Test" silently does nothing:
+              // finalData stays null, streamErr stays null, and the button just
+              // stops. Surface it instead of discarding the frame.
+              if (evt === "done" || evt === "error") {
+                streamErr = streamErr || `Stream sent an unreadable ${evt} event`;
+              }
+            }
           }
         }
         const latencyMs = Date.now() - start;
         if (streamErr) { setError(streamErr); return; }
         if (finalData) setResult({ data: finalData, latencyMs });
+        else if (!partialSeen) setError("Stream ended without a result");
       } else {
         const data = await res.json();
         const latencyMs = Date.now() - start;
@@ -1801,17 +1810,24 @@ export default function MediaProviderDetailPage() {
 
   const handleDeleteCustom = async () => {
     if (!confirm("Delete this Custom Embedding node?")) return;
+    setDeleteError("");
     try {
       const res = await fetch(`/api/provider-nodes/${id}`, { method: "DELETE" });
-      if (res.ok) navigate(`/dashboard/media-providers/${kind}`);
+      if (res.ok) {
+        navigate(`/dashboard/media-providers/${kind}`);
+        return;
+      }
+      const d = await res.json().catch(() => ({}));
+      setDeleteError(d?.error || `Delete failed (HTTP ${res.status})`);
     } catch (error) {
-      console.log("Error deleting custom embedding node:", error);
+      setDeleteError(error.message || "Network error");
     }
   };
 
   const [customNode, setCustomNode] = useState(null);
   const [customLoading, setCustomLoading] = useState(isCustom);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // Fetch custom node info from API for custom embedding nodes
   useEffect(() => {
@@ -1903,6 +1919,9 @@ export default function MediaProviderDetailPage() {
                 Delete
               </Button>
             </div>
+          )}
+          {deleteError && (
+            <div className="text-xs text-red-500 break-words">{deleteError}</div>
           )}
         </div>
       </div>

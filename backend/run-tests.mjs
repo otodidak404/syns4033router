@@ -40,6 +40,7 @@ const SUITES = [
   ["test-mitm-page.mjs", false],
   ["test-cli-tools-page.mjs", false],
   ["test-docs-page.mjs", false],
+  ["test-media-providers-page.mjs", false],
 ];
 
 let failed = 0;
