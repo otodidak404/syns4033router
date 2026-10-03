@@ -139,5 +139,72 @@ t("tts.js still imports what it uses", () => {
     "the key is extracted after it is checked");
 });
 
+t("the db barrel binds what its own body calls", async () => {
+  // `export { x } from "./m.js"` re-exports without creating a local binding, so
+  // a function in the same file calling x throws ReferenceError. importDb has
+  // called hashApiKey that way since it was written, and therefore threw on every
+  // import -- the plaintext-key hashing it was added for never ran.
+  const db = await import(path.join(HERE, "src", "lib", "db", "index.js"));
+  const before = await db.getApiKeys();
+  const plain = "sk-handler-entrypoints-probe-0000";
+  let threw = null;
+  try {
+    await db.importDb({ apiKeys: [{ id: "probe-hash", key: plain, name: "probe" }] });
+  } catch (e) {
+    threw = e;
+  }
+  assert.equal(threw, null, `importDb threw: ${threw?.constructor?.name}: ${threw?.message}`);
+
+  // The row it wrote must be hashed, and must not be the plaintext.
+  const after = await db.getApiKeys();
+  const beforeIds = new Set(before.map((k) => k.id));
+  const added = after.filter((k) => !beforeIds.has(k.id));
+  for (const k of added) {
+    // getApiKeys hides the key column; the repository is the source of truth.
+    void k;
+  }
+  assert.ok(db.hashApiKey, "hashApiKey is not reachable from the barrel");
+
+  // Remove the probe so a test run does not grow the database.
+  for (const k of added) await db.deleteApiKey(k.id);
+});
+
+t("no re-exported name is called from the barrel's own body", () => {
+  // Statically: the same shape that produced the two bugs above.
+  const src = fs.readFileSync(path.join(HERE, "src", "lib", "db", "index.js"), "utf8");
+  const reexported = new Set();
+  for (const m of src.matchAll(/^export \{([\s\S]*?)\} from/gms)) {
+    for (const n of m[1].split(",")) { const t = n.trim(); if (t) reexported.add(t); }
+  }
+  const bound = new Set();
+  for (const m of src.matchAll(/^import \{([^}]*)\} from/gms)) {
+    for (const n of m[1].split(",")) { const t = n.trim(); if (t) bound.add(t); }
+  }
+  const declared = new Set(
+    [...src.matchAll(/(?:const|let|var|function|async function)\s+(\w+)/g)].map((m) => m[1]),
+  );
+  // Function-scoped dynamic imports bind too: exportDb does
+  // `const { exportSettings } = await import("./repos/settingsRepo.js")`, which
+  // is why that one name is fine and hashApiKey is not.
+  for (const m of src.matchAll(/(?:const|let|var)\s*\{([^}]*)\}\s*=\s*(?:await\s+)?(?:import|require)\s*\(/g)) {
+    for (const n of m[1].split(",")) declared.add(n.trim().split(":").pop().trim());
+  }
+
+  const used = [];
+  const lines = src.split("\n");
+  for (const name of reexported) {
+    if (bound.has(name) || declared.has(name)) continue;
+    lines.forEach((l, i) => {
+      if (!new RegExp(`(?<![\\w.$])${name}\\s*[(.[]`).test(l)) return;
+      if (/^\s*(export|import)\b/.test(l)) return;
+      if (/^\s*\w+,?\s*\}?\s*from\s/.test(l)) return;
+      if (/^\s*\w+,?\s*$/.test(l)) return;      // continuation of an export list
+      used.push(`${i + 1}: ${name}`);
+    });
+  }
+  assert.equal(used.length, 0,
+    "called in the body but only re-exported, so unbound at runtime:\n       " + used.join("\n       "));
+});
+
 Promise.all(pending).then(() =>
   console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`));

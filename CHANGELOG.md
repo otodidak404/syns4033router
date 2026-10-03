@@ -3,6 +3,31 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+
+### Settings import died on every call: `hashApiKey` was only re-exported
+
+`backend/src/lib/db/index.js` re-exports its repositories with
+`export { ... } from "./repos/x.js"`, which publishes a name without creating a
+local binding. `importDb` called `hashApiKey(k.key)` from its own body, so every
+import threw `ReferenceError: hashApiKey is not defined` — the plaintext-key
+hashing that was added to `importDb` had never run once. Found by running eslint
+`no-undef` over `backend/src` and `backend/open-sse` (338 files); it is the only
+real finding there, and the same shape as the `fd8fd30` `modelStr` bug in
+`tts.js` and `search.js`.
+
+```js
+import { hashApiKey } from "./repos/apiKeysRepo.js";
+```
+
+- `backend/test-handler-entrypoints.mjs` gained two cases: one calls `importDb`
+  and asserts it does not throw, the other statically rejects any name that is
+  re-exported and then called from the barrel's own body. The static case models
+  function-scoped dynamic imports, because `exportDb` binds `exportSettings` that
+  way and that name is correct.
+- Two of three mutation controls fire; the third (deleting the re-export line) is
+  not a valid mutant, since the real import keeps the call bound.
+
+xed
 ### The handler sweep, and a timeout it was missing itself
 
 `sweep-handlers.mjs` imports every request handler under `src/sse/handlers` and

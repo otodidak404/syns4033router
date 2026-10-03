@@ -1,6 +1,10 @@
 // Public API barrel — all DB functions
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
+// The barrel re-exports hashApiKey below, but `export … from` does not create a
+// local binding. importDb calls it, so the plaintext-key hashing I added there
+// threw ReferenceError: hashApiKey is not defined on every import.
+import { hashApiKey } from "./repos/apiKeysRepo.js";
 
 // Settings
 export {
