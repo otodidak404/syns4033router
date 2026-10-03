@@ -33,6 +33,52 @@ const post = (pathname, body) => new Request(`http://127.0.0.1${pathname}`, {
   body: typeof body === "string" ? body : JSON.stringify(body),
 });
 
+t("the search handler runs instead of throwing", async () => {
+  // Same commit, same mistake as the speech handler: fd8fd30 rewrote
+  // `if (settings.requireApiKey)` as `clientApiKeyRequired({ model: modelStr, …})`
+  // in a function whose model binding is called providerInput. Every
+  // /v1/search call that reached the gate threw.
+  const { handleSearch } = await import(path.join(HANDLERS, "search.js"));
+  for (const body of [
+    { provider: "tidak/ada", query: "halo" },
+    { model: "tidak/ada", query: "halo" },
+  ]) {
+    const res = await handleSearch(post("/api/v1/search", body));
+    assert.ok(res instanceof Response, "did not return a Response");
+    assert.notEqual(res.status, 500, `500 -- ${(await res.text()).slice(0, 120)}`);
+  }
+});
+
+t("every clientApiKeyRequired call passes a bound model", () => {
+  // The sweep found two; this catches the next one. All eight call sites are in
+  // this tree and each argument has to be a binding somewhere in its file.
+  const files = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith(".js")) files.push(p);
+    }
+  })(HANDLERS);
+
+  const sites = [];
+  for (const f of files) {
+    const src = fs.readFileSync(f, "utf8");
+    for (const m of src.matchAll(/clientApiKeyRequired\(\{\s*model:\s*(\w+)/g)) {
+      const varName = m[1];
+      const bound = new RegExp(
+        `\\b(?:const|let|var|function)\\s+${varName}\\b|\\b${varName}\\s*=\\s*[^=]|function\\s*\\([^)]*\\b${varName}\\b`,
+      ).test(src);
+      sites.push({ f: path.relative(HERE, f), varName, bound });
+    }
+  }
+  assert.ok(sites.length >= 8, `only ${sites.length} call sites found; the tree changed`);
+  const unbound = sites.filter((x) => !x.bound);
+  assert.equal(unbound.length, 0,
+    "clientApiKeyRequired called with an unbound model:\n       " +
+    unbound.map((x) => `${x.f} -> ${x.varName}`).join("\n       "));
+});
+
 t("the speech handler runs instead of throwing", async () => {
   const { handleTts } = await import(path.join(HANDLERS, "tts.js"));
   // Each of these reaches the api-key gate. Before the fix the first line of it

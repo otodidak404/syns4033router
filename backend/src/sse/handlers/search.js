@@ -47,7 +47,10 @@ export async function handleSearch(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
-  if (clientApiKeyRequired({ model: modelStr, settings }).required) {
+  // fd8fd30 introduced modelStr here; this function has no such binding -- the
+  // request's model arrives as providerInput. Every /v1/search call that reached
+  // the gate threw ReferenceError: modelStr is not defined.
+  if (clientApiKeyRequired({ model: providerInput, settings }).required) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");

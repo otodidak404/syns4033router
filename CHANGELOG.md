@@ -3,6 +3,27 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/v1/search` — the same commit broke a second endpoint
+
+`search.js` line 50 read `clientApiKeyRequired({ model: modelStr, … })` in a
+function whose model binding is `providerInput`. `fd8fd30` rewrote
+`if (settings.requireApiKey)` and, as with the speech handler, the identifier it
+referenced never existed here. Every `/v1/search` request that reached the gate
+threw `ReferenceError: modelStr is not defined`.
+
+Found by a sweep that imports every handler and calls it, not by reading it. The
+sweep covers eight call sites of `clientApiKeyRequired`; all eight now resolve to
+a binding in their own file, and the suite asserts that so the next rewrite of a
+key gate cannot repeat it.
+
+Live before and after, same request:
+
+```
+before   ReferenceError: modelStr is not defined
+after    401 {"error":{"message":"Missing API key", …}}
+```
+
+
 ### `/dashboard/media-providers/tts` — I had broken `/v1/audio/speech` myself, in commit fd8fd30
 
 Probing the endpoint directly rather than through the page:
@@ -966,7 +987,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 342 assertions, 33 suites, all passed |
+| `npm run test` | 344 assertions, 33 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |
