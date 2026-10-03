@@ -72,6 +72,7 @@ const SUITES = [
       ["test-db-import-guard.mjs", false],
       // replays real SSE frames through the page's own parsing decision
       ["test-basic-chat-stream.mjs", false],
+      ["test-landing-links.mjs", false],
     ];
 
 let failed = 0;

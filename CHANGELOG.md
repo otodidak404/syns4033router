@@ -1526,6 +1526,37 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### The landing page sent visitors to someone else's repository
+
+`/dashboard/landing` renders "© 2026 codestorm. SYNS4033ROUTER" and every one of its
+product links pointed at `github.com/decolua/9router` — twelve GitHub links and two
+npm links. A visitor who clicked "View on GitHub" in the hero, or the GitHub button
+in the footer, landed on another project's repository.
+
+The README credits `decolua/9router` as the original 9Router project, and that credit
+is right — it belongs in the README and the licence, not as this product's own link.
+All twelve links now point at `otodidak404/syns4033router`.
+
+The two npm links went to `npmjs.com/package/9router`, the upstream package. This
+repository's `package.json` is named `9router-v3`, and whether a package under that
+name is published cannot be checked from here, so those links point at this
+repository's README rather than assert a publication that may not exist.
+
+The page itself was clean and stays that way: no fetch, no storage, no
+`dangerouslySetInnerHTML`, no `eval`, and no `target="_blank"` without `noopener`.
+
+- `backend/test-landing-links.mjs` (8 assertions) walks every `.jsx` under the landing
+  page and checks that no link names the upstream project, that the GitHub links are
+  exactly this repository and no other, that no unverifiable npm package is advertised,
+  that the README still credits the original project, and that the runtime surface
+  stays empty. Three mutation controls, each confirmed to change the file first:
+  putting one link back to `decolua/9router`, adding a look-alike repository slug, and
+  removing the upstream credit from the README.
+
+  The "links at this repository" assertion first compared a prefix, so
+  `otodidak404/syns4033router-evil` would have satisfied it. It now requires the link
+  set to contain this repository and nothing else.
+
 ### A chat reply that failed mid-stream looked like a finished one
 
 `/dashboard/basic-chat` reads the SSE stream and pulls text out of each frame with
