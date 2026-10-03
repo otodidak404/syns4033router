@@ -79,6 +79,7 @@ const SUITES = [
       ["test-codebuddy-debug-routes.mjs", false],
       ["test-ammail-tutorial-page.mjs", false],
       ["test-ammail-webhook-url.mjs", false],
+      ["test-codebuddy-request-bounds.mjs", false],
     ];
 
 let failed = 0;

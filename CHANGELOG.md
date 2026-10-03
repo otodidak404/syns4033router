@@ -1526,6 +1526,46 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### One request could ask for an unbounded number of inboxes
+
+`auto-generate-email` read `parseInt(count) || 1` straight from the body with no
+ceiling. Each inbox is a serial network call with up to three retries, so the request
+would not fail fast — it would run until the upstream ran out or the container was
+restarted. It is now clamped to `MAX_GENERATED_INBOXES` (20), which is a batch a person
+could have meant.
+
+### The provider name went into a filesystem path unchecked
+
+`provider` from the body was concatenated into `profiles/<provider>` and also chooses
+the auth shape used later in `bulk-add-to-9router`. It is now checked against
+`TARGET_PROVIDERS` before either, and an unknown one is a **400** naming the accepted
+set rather than a 500.
+
+The set was written from memory and was wrong: the route treats both `kimi` and
+`kimi-coding` as Kimi in three places and gives `cloudflare` its own signup script, so a
+caller passing `provider: "kimi"` would have been rejected by a check the rest of the
+route supports. The allow-list is now read off the comparisons in the route, and
+`test-codebuddy-request-bounds.mjs` fails if any provider the route special-cases is
+missing from it — so a new spelling added downstream cannot be left out of the gate.
+
+### A clear-logs that failed reported that it had cleared
+
+The database update and the in-memory reset sit in one `try`, and its `catch` logged
+the error and fell through to `{ ok: true }` on a 200. A clear that did not happen read
+as one that did. It is now a **500** that says what failed.
+
+- `backend/test-codebuddy-request-bounds.mjs` (8 assertions) runs the clamp over
+  ordinary, past-the-ceiling and nonsense counts including `1e9`, `Infinity` and `NaN`,
+  checks that both actions bind their provider through the allow-list, that the set
+  covers every provider the route special-cases and is not empty, that a rejected
+  provider is a 400, and that the clear-logs success answer sits outside its `catch`.
+  Eight mutation controls, each confirmed to change the file first.
+
+Two of those controls were green until they were fixed: enumerating the
+`normaliseTargetProvider` calls missed the mutation that removes one, so the bindings
+are checked instead; and an emptied allow-list would have rejected every provider,
+which looks like validation working, so its contents are now asserted.
+
 ### The OTP webhook could be pointed at any host the caller named
 
 `webhook-register` built its address from `req.headers["host"]` and

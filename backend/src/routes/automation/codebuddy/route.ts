@@ -108,6 +108,37 @@ if (!global._codebuddyState) {
 
 export const dynamic = "force-dynamic";
 
+// Creating an inbox is a serial network call with up to three retries each, and the
+// count arrived in the request body with no ceiling -- so a single call could ask for
+// more inboxes than there are and never return. Twenty is a batch a person can mean.
+const MAX_GENERATED_INBOXES = 20;
+
+// The provider name lands in a filesystem path (`profiles/<provider>`) and selects the
+// auth shape used later, so it is checked against the set this route actually supports
+// rather than concatenated into a path.
+// Every spelling the rest of this route actually handles, read off the comparisons
+// below rather than from memory: "kimi" and "kimi-coding" are both treated as Kimi in
+// three places, and "cloudflare" has its own signup script. An allow-list missing one of
+// these would reject a provider the route supports.
+const TARGET_PROVIDERS = new Set([
+  "codebuddy", "leonardo", "weavy", "kimi", "kimi-coding", "qoder", "kiro", "cloudflare",
+]);
+
+function normaliseTargetProvider(value) {
+  const name = String(value ?? "").trim();
+  if (!TARGET_PROVIDERS.has(name)) {
+    throw new HttpError(400, `Unknown provider "${name}". Expected one of: ${[...TARGET_PROVIDERS].join(", ")}.`);
+  }
+  return name;
+}
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export async function GET(req, res) {
   try {
     const { getAdapter } = await import("../../../lib/db/driver.js");
@@ -216,7 +247,8 @@ export async function GET(req, res) {
     });
   } catch (error) {
     console.error("Error in GET /api/automation/codebuddy:", error);
-    return res.status(500).json({ error: error.message });
+    const status = error instanceof HttpError ? error.status : 500;
+    return res.status(status).json({ error: error.message });
   }
 }
 
@@ -245,8 +277,8 @@ export async function POST_handler(req, res) {
     // ── Action: Auto Generate Email ──────────────────────────────────
     if (action === "auto-generate-email") {
       const { count, provider, run_now, concurrency, domain } = body;
-      const targetProvider = provider || "leonardo";
-      const numCount = parseInt(count) || 1;
+      const targetProvider = normaliseTargetProvider(provider || "leonardo");
+      const numCount = Math.min(Math.max(parseInt(count) || 1, 1), MAX_GENERATED_INBOXES);
 
       const client = await getAmmailClientFromSettings();
       if (!client.configured) {
@@ -316,7 +348,7 @@ export async function POST_handler(req, res) {
     // ── Action: Add manual Google accounts ───────────────────────────
     if (action === "add-google") {
       const { accounts_text, run_now, concurrency, provider } = body;
-      const targetProvider = provider || "codebuddy";
+      const targetProvider = normaliseTargetProvider(provider || "codebuddy");
       console.log(`[ADD-GOOGLE] Adding accounts for target provider: "${targetProvider}"`);
       const raw = (accounts_text || "").trim();
       if (!raw) {
@@ -585,7 +617,13 @@ export async function POST_handler(req, res) {
           global._codebuddyState.activeJobId = null;
         }
       } catch (e) {
-        console.error("clear-logs error:", e);
+        // The update and the in-memory reset are separate things, so say which failed.
+        // The old version logged and answered { ok: true }, so a clear that did not
+        // happen read as a clear that did.
+        return res.status(500).json({
+          ok: false,
+          error: `Could not clear the finished jobs: ${e?.message || e}`,
+        });
       }
       return res.json({ ok: true });
     }
