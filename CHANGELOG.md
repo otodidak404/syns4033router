@@ -4,6 +4,98 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### Weavy video generation could never run in this deployment
+
+`videoProviders/weavy.js` shells out to `.venv/bin/python` with
+`src/automation/weavy_generate.py`. Neither exists here: the Dockerfile builds
+`node:22-alpine`, which has no interpreter and no virtualenv, and
+`weavy_generate.py` is not in the repository or in git — only `cf_token_via_session.py`,
+`cloudflare_signup.py` and `test_proxy.py` are. Every call reached `execFile` and died
+with a bare `ENOENT`, across all 75 advertised weavy models. The adapter now checks for
+the interpreter and the script first and answers `501` naming what is missing and what
+still works ("Weavy is image-only here"), instead of an opaque spawn failure.
+
+The same pattern sits in `tokenRefresh.js` and the codebuddy automation routes, so those
+features are equally unreachable on a container build. They are outside the video menu
+and are left as they are, but they are not working either.
+
+Leonardo was the adapter that could run: it is plain HTTP with four `fetch` calls and
+shells out to nothing. The suite now drives it against a stubbed fetch — submit, poll
+`GetAIGenerationFeedStatuses`, `COMPLETE`, then `GetAIGenerationFeed` for
+`generated_images[].motionMP4URL` — and asserts the credential never reaches a query
+string and that an empty response surfaces as an error rather than a silent success.
+Those 709 lines of adapter code had never been executed by anything.
+
+  Two notes on how the suite got there, because both were wrong first. `waitForVideo`
+  sleeps `POLL_INTERVAL_MS` before its first poll, so a 4s cap hung the runner instead
+  of failing it. And the adapter cases swap `globalThis.fetch`, so running them under
+  `Promise.all` let the neighbouring test's stub answer this test's submit — the file
+  is serialised now, and the mutation controls confirm it.
+
+  `POLL_TIMEOUT_MS` is 600000 — a video request can occupy a connection for ten minutes.
+
+### runwayml offered two video models it can never generate
+
+`getVideoAdapter()` returns null for any provider outside `{ leonardo, weavy }`, and the
+core answers `400 "Provider 'runwayml' does not support video generation"`.
+The catalogue still listed `runwayml/gen4_turbo` and `runwayml/gen3a_turbo`, and
+`getProvidersByKind("video")` still put runwayml on the page — two cards whose Test
+button could only fail. Both models are gone from the catalogue, runwayml carries
+`hiddenKinds: ["video"]`, and it stays visible for image where it does work. 71
+video models remain and every one reaches an adapter.
+
+### A malformed JSON body answered 500 on every JSON route
+
+`express.json()` throws a `SyntaxError` that already carries status 400 and a
+message; the server's error handler flattened it to `500 {"error":"Internal server
+error"}`. Measured before the fix, all eight: `/v1/video/generations`,
+`/v1/images/generations`, `/v1/chat/completions`, `/v1/embeddings`,
+`/v1/audio/speech`, `/v1/search`, `/v1beta/models/x:generateContent` and
+`/api/v1/audio/transcriptions`. Tagged body-parser failures now answer 400 with
+`Invalid JSON body`, oversized bodies answer 413, and everything else still falls
+through to the 500 branch.
+
+### The provider-info card could show the wrong kind
+
+`ProviderInfoCard`'s config chain ended in
+`provider.searchConfig || { mode: "chat-completions", … }`. On a provider that
+serves video *and* search, that renders a chat-completions panel titled
+"Video Config". Leonardo has no config at all, so it was unreachable today and the
+fallthrough was one provider flag away from being wrong. Video has its own branch
+now, `webSearch` claims `searchConfig` explicitly, and `videoConfig` is part of the
+gate.
+
+### The docs still described RunwayML as a video provider
+
+`image-video-docs.html` carried both removed models in its embedded catalogue and
+described the section as "Gen-4 Turbo, Gen-3 Alpha — professional AI video
+generation". The docs guard caught the catalogue half on the first run. The prose
+now says plainly that video is not implemented for RunwayML and points at the
+providers that do serve it.
+
+### The two provider tables were edited by hand
+
+The frontend and backend copies of `providers.js` are read by different halves of
+the app, so a divergence would show as a page listing a provider the server cannot
+route. They are now asserted equal on `serviceKinds` and `hiddenKinds` for every
+provider.
+
+- `backend/test-video-flow.mjs` (16 assertions) imports the real catalogue and the
+  real adapter map rather than restating what they ought to contain. Seven mutation
+  controls: disabling the parse-failed branch, unhiding runwayml in either table,
+  letting the two tables drift, adding a video model with no adapter, removing the
+  weavy preflight, and leaking the credential into the error message.
+
+  Three of them stayed green at first for reasons worth recording. The
+  `entity.parse.failed` assertion matched the same string inside the explanatory
+  comment above the branch, so disabling the branch changed nothing. The runwayml
+  mutation was applied to the frontend file while the suite loads the backend one.
+  And two adapter mutations silently failed to apply — the replacement text did not
+  match the source — so they were not tests at all until they were rewritten against
+  the file. Only the controls that were confirmed to change the file are counted.
+
+xed
+
 ### runwayml offered two video models it can never generate
 
 `getVideoAdapter()` returns null for any provider outside `{ leonardo, weavy }`,

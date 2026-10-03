@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "node:fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { updateProviderConnection } from "@/lib/localDb";
@@ -31,6 +32,23 @@ export default {
     const venvPython = path.resolve(process.cwd(), ".venv/bin/python");
     const scriptPath = path.resolve(process.cwd(), "src/automation/weavy_generate.py");
     const profilesDir = path.resolve(process.cwd(), "profiles/weavy");
+
+    // Preflight. This adapter shells out to Python, and the deployed image is
+    // node:22-alpine with no interpreter, no .venv, and no weavy_generate.py in
+    // the repository at all -- so execFile failed with a bare ENOENT on every
+    // call, for all 75 weavy models. Saying so up front turns an opaque spawn
+    // failure into something the operator can act on.
+    const missing = [];
+    if (!fs.existsSync(venvPython)) missing.push(venvPython);
+    if (!fs.existsSync(scriptPath)) missing.push(scriptPath);
+    if (missing.length) {
+      const err = new Error(
+        `Weavy video generation needs Python and ${scriptPath}, which this ` +
+        `deployment does not provide: ${missing.join(", ")}. Weavy is image-only here.`,
+      );
+      err.status = 501;
+      throw err;
+    }
 
     const execFileAsync = promisify(execFile);
     let stdout;

@@ -32,10 +32,15 @@ const providersMod = await import(path.join(HERE, "src", "shared", "constants", 
 const modelsMod = await import(path.join(HERE, "open-sse", "config", "providerModels.js"));
 const videoMod = await import(path.join(HERE, "open-sse", "handlers", "videoProviders", "index.js"));
 
+// Serialised on purpose. The adapter cases below swap globalThis.fetch, and run
+// concurrently they overwrote each other: the "no generation id" stub answered
+// the submit of the test beside it, so both saw the other's response.
 let pass = 0;
-const pending = [];
-const t = (name, fn) => {
-  pending.push((async () => {
+const queue = [];
+const t = (name, fn) => queue.push({ name, fn });
+
+async function drain() {
+  for (const { name, fn } of queue) {
     try {
       await fn();
       pass++;
@@ -44,8 +49,9 @@ const t = (name, fn) => {
       process.exitCode = 1;
       console.log(`  FAIL ${name}\n       ${e?.message || e}`);
     }
-  })());
-};
+  }
+  console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);
+}
 
 const docHtml = fs.readFileSync(
   path.join(HERE, "..", "frontend", "public", "image-video-docs.html"), "utf8");
@@ -223,5 +229,150 @@ t("the video example card sends the fields the handler requires", () => {
   }
 });
 
-Promise.all(pending).then(() =>
-  console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`));
+// ── the adapters, executed ───────────────────────────────────────────────────
+// 709 lines of leonardo.js and weavy.js that nothing in the suite had ever called.
+// A missing mock is not evidence, so both are driven here.
+
+const fsMod = await import("node:fs");
+const pathMod = path;
+const leonardo = (await import(path.join(HERE, "open-sse", "handlers", "videoProviders", "leonardo.js"))).default;
+const weavy = (await import(path.join(HERE, "open-sse", "handlers", "videoProviders", "weavy.js"))).default;
+
+/** Swap global fetch and run fn, recording every call. */
+async function withFetch(handler, fn, capMs = 12000) {
+  const real = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init, method: init?.method || "GET" });
+    return handler(String(url), init, calls.length);
+  };
+  // waitForVideo sleeps between polls, so without a cap this hangs the suite
+  // rather than failing it.
+  let timer;
+  try {
+    const capped = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("adapter did not settle within the cap")), capMs);
+    });
+    return { result: await Promise.race([Promise.resolve().then(fn), capped]), calls };
+  } finally {
+    clearTimeout(timer);
+    globalThis.fetch = real;
+  }
+}
+
+t("the weavy adapter refuses clearly instead of failing to spawn Python", async () => {
+  // The deployed image is node:22-alpine: no interpreter, no .venv, and
+  // weavy_generate.py is not in the repository. Before the preflight, every one of
+  // the 75 weavy models answered with a bare ENOENT from execFile.
+  const here = pathMod.resolve(process.cwd());
+  const venv = pathMod.resolve(here, ".venv/bin/python");
+  const script = pathMod.resolve(here, "src/automation/weavy_generate.py");
+  assert.ok(!fsMod.existsSync(script),
+    "weavy_generate.py exists now -- this deployment still cannot run it, so the " +
+    "preflight message and this assertion need revisiting together");
+  assert.ok(!fsMod.existsSync(venv), "a .venv appeared; alpine still has no Python");
+
+  let threw = null;
+  try {
+    await weavy.generate(
+      { email: "a@b.c", accessToken: "tok", connectionId: "c1" },
+      "a cat",
+      { model: "weavy-wan", prompt: "a cat" },
+      { debug: () => {} },
+    );
+  } catch (e) {
+    threw = e;
+  }
+  assert.ok(threw, "the adapter reported success without Python");
+  assert.equal(threw.status, 501, `expected 501, got ${threw.status}: ${threw.message}`);
+  assert.ok(/weavy_generate\.py/.test(threw.message),
+    `the message should name the missing script: ${threw.message}`);
+  assert.ok(/Weavy is image-only/.test(threw.message),
+    `the message should say what still works: ${threw.message}`);
+});
+
+t("the weavy adapter does not leak the token through its failure", async () => {
+  let msg = "";
+  try {
+    await weavy.generate(
+      { email: "a@b.c", accessToken: "SUPER-SECRET-JWT-VALUE", connectionId: "c1" },
+      "a cat", { model: "weavy-wan" }, { debug: () => {} },
+    );
+  } catch (e) {
+    msg = `${e.message} ${e.stack || ""}`;
+  }
+  assert.ok(msg.length > 0, "expected the adapter to throw");
+  assert.ok(!msg.includes("SUPER-SECRET-JWT-VALUE"),
+    "the credential appears in the failure");
+});
+
+t("the leonardo adapter submits over HTTP, polls, and returns urls", async () => {
+  // Never executed before this. Driven against a stubbed fetch: submit -> poll
+  // until COMPLETE -> return the urls.
+  const { result, calls } = await withFetch(
+    (url, init) => {
+      const q = String(init?.body || "");
+      let body;
+      if (q.includes("generationId")) {
+        body = { data: { generate: { generationId: "gen-1" } } };
+      } else if (q.includes("GetAIGenerationFeedStatuses")) {
+        // Hasura: pollStatus reads data.generations[0].status
+        body = { data: { generations: [{ id: "gen-1", status: "COMPLETE" }] } };
+      } else {
+        // Hasura: fetchVideoUrls reads generated_images[].motionMP4URL
+        body = { data: { generations: [{ generated_images: [
+          { url: "https://cdn/img.png", motionMP4URL: "https://cdn/x.mp4" }] }] } };
+      }
+      void url;
+      return new Response(JSON.stringify(body),
+        { status: 200, headers: { "Content-Type": "application/json" } });
+    },
+    () => leonardo.generate(
+      { apiKey: "leonardo-key", connectionId: "c1", email: "a@b.c" },
+      "a cat", { model: "leo-kling-2.5-turbo", prompt: "a cat" },
+      { debug: () => {} },
+    ),
+  );
+
+  assert.ok(result && !(result instanceof Error && /did not settle/.test(result.message)),
+    `the adapter never returned: ${result?.message}`);
+  assert.ok(calls.length >= 2, `expected a submit and a poll, saw ${calls.length}`);
+  for (const c of calls) {
+    assert.ok(/^https:\/\//.test(c.url), `not an absolute URL: ${c.url}`);
+    assert.ok(!/leonardo-key/.test(c.url),
+      `the credential is in the query string: ${c.url.slice(0, 80)}`);
+  }
+  assert.ok(result && Array.isArray(result.urls) && result.urls.length === 1,
+    `the adapter did not return urls: ${JSON.stringify(result)?.slice(0, 120)}`);
+  assert.equal(result.genId, "gen-1", "the generation id was not carried through");
+
+  // It talks HTTP, so unlike weavy it can actually run in this image.
+  const src = fsMod.readFileSync(
+    pathMod.join(HERE, "open-sse", "handlers", "videoProviders", "leonardo.js"), "utf8");
+  assert.ok(!/execFile|child_process|\.py["']/.test(src),
+    "leonardo must not shell out, or it inherits weavy's problem");
+});
+
+t("a leonardo response without a generation id is a visible error", async () => {
+  const { result } = await withFetch(
+    () => new Response(JSON.stringify({ data: {} }),
+      { status: 200, headers: { "Content-Type": "application/json" } }),
+    async () => {
+      try {
+        await leonardo.generate(
+          { apiKey: "leonardo-key", connectionId: "c1" },
+          "a cat", { model: "leo-kling-2.5-turbo", prompt: "a cat" },
+          { debug: () => {} },
+        );
+        return null;
+      } catch (e) {
+        return e;
+      }
+    },
+  );
+  assert.ok(result, "an empty response was reported as success");
+  assert.ok(/generationId/.test(result.message),
+    `the error should say what was missing: ${result.message}`);
+});
+
+await drain();
