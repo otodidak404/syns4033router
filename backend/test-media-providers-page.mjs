@@ -29,6 +29,8 @@ const MODEL_SERVICE = path.join(HERE, "src", "sse", "services", "model.js");
 const MODAL = path.join(HERE, "..", "frontend", "src", "shared", "components", "AddCustomEmbeddingModal.jsx");
 const IMG_CORE = path.join(HERE, "..", "backend", "open-sse", "handlers", "imageGenerationCore.js");
 const IMG_BASE = path.join(HERE, "..", "backend", "open-sse", "handlers", "imageProviders", "_base.js");
+const TTS_CFG = path.join(HERE, "..", "frontend", "src", "shared", "constants", "ttsProviders.js");
+const VOICE_FETCHERS = path.join(HERE, "..", "backend", "open-sse", "handlers", "ttsProviders", "index.js");
 
 let pass = 0;
 const pending = [];
@@ -315,6 +317,72 @@ t("the image source resolves the same way the component does", () => {
     "the component no longer resolves the source this way");
   assert.ok(/const imageReturned = kind === "image" && !!imageSrc/.test(detail),
     "the gate is not `!!imageSrc`");
+});
+
+t("the TTS voice picker asks for the provider it is showing, or says it cannot", () => {
+  // It used to send provider="edge-tts" for everything except local-device, so
+  // ElevenLabs, Deepgram, Inworld, Minimax and Minimax-CN opened a picker full of
+  // Microsoft Edge voices -- picking one and sending it upstream fails.
+  const cfg = fs.readFileSync(TTS_CFG, "utf8");
+  const browsable = [...cfg.matchAll(/"([\w-]+)":\s*\{([\s\S]*?)\n  \},/g)]
+    .filter(([, , body]) => /hasBrowseButton: true/.test(body))
+    .map(([, id]) => id);
+
+  // The map lives in ttsProviders/index.js and the route only imports it.
+  const idx = fs.readFileSync(VOICE_FETCHERS, "utf8");
+  const block = /VOICE_FETCHERS\s*=\s*\{([\s\S]*?)\n\}/.exec(idx);
+  assert.ok(block, "VOICE_FETCHERS is gone from ttsProviders/index.js");
+  const supported = [...block[1].matchAll(/"?(\w[\w-]*)"?\s*:/g)].map((m) => m[1]);
+
+  assert.ok(browsable.length >= 5, `only ${browsable.length} providers parsed as browsable`);
+  assert.ok(supported.length >= 4, `only ${supported.length} voice fetchers found in the route`);
+
+  // Every browsable provider must be resolvable: either the route lists it, or
+  // the page explains that it cannot. Never silently substituted.
+  const declared = detail.match(/LISTABLE_VOICE_PROVIDERS = \[([^\]]*)\]/);
+  assert.ok(declared, "the page no longer declares which providers it can list");
+  const allowed = [...declared[1].matchAll(/"([\w-]+)"/g)].map((m) => m[1]);
+
+  const hardcoded = [...cfg.matchAll(/"([\w-]+)":\s*\{([\s\S]*?)\n  \},/g)]
+    .filter(([, , body]) => /voiceSource: "hardcoded"/.test(body)).map(([, id]) => id);
+
+  // Evaluate the page's own derivation over the real config rather than
+  // re-deciding the rule here. deepgram is the case that motivated it: the
+  // voices route has no deepgram fetcher and the config has no manual input, so
+  // a Browse button there can only open an empty picker.
+  const manual = [...cfg.matchAll(/"([\w-]+)":\s*\{([\s\S]*?)\n  \},/g)]
+    .filter(([, , body]) => /hasVoiceIdInput: true/.test(body)).map(([, id]) => id);
+  const canBrowse = (id) => allowed.includes(id) || manual.includes(id);
+
+  assert.equal(canBrowse("deepgram"), false,
+    "deepgram has no fetcher and no manual input; the button must be hidden");
+  assert.equal(canBrowse("elevenlabs"), true, "the route can list elevenlabs voices");
+  assert.equal(canBrowse("minimax"), true, "minimax has a manual voice id input");
+  assert.equal(canBrowse("edge-tts"), true, "edge-tts is listable");
+  assert.equal(allowed.length, supported.length,
+    `the page lists ${allowed.length} providers but the route has ${supported.length} fetchers: ` +
+    allowed.filter((x) => !supported.includes(x)).join(", "));
+  assert.deepEqual([...allowed].sort(), [...supported].sort(),
+    "LISTABLE_VOICE_PROVIDERS has drifted from VOICE_FETCHERS");
+
+  assert.ok(/const canBrowseVoices = config\.hasBrowseButton/.test(detail),
+    "the Browse button is not gated on what the voices route can serve");
+  assert.ok(/\{canBrowseVoices && \(/.test(detail),
+    "the Browse button still renders unconditionally");
+
+  // Scoped to the fetch branch: the status check has to be on this request, not
+  // somewhere else in a 2000-line file.
+  // Anchor on the comment inside the branch, not on a generic `} else {` --
+  // a 2000-line file has many and the slice lands on the wrong one.
+  const anchorAt = detail.indexOf("Ask the voices route for");
+  assert.ok(anchorAt > -1, "the voices fetch branch is gone");
+  const fetchBranch = detail.slice(anchorAt, anchorAt + 1600);
+  assert.ok(/LISTABLE_VOICE_PROVIDERS\.includes\(providerId\)/.test(fetchBranch.slice(0, 1200)),
+    "the fetch branch no longer gates on the listable set");
+  assert.ok(/if \(!res\.ok\)/.test(fetchBranch.slice(0, 1600)),
+    "the voices fetch still renders a failed body as a voice list");
+  assert.ok(!/voices\?provider=\$\{providerId === "local-device"/.test(detail),
+    "the old edge-tts substitution is back");
 });
 
 Promise.all(pending).then(() =>

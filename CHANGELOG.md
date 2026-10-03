@@ -3,6 +3,48 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/media-providers/tts` — the voice picker asked for the wrong provider
+
+It sent `provider="edge-tts"` for everything except `local-device`:
+
+```
+ElevenLabs, Deepgram, Inworld, Minimax, Minimax-CN
+  → opened a picker full of Microsoft Edge voices
+  → picking one and sending it upstream fails
+```
+
+The voices route answers for four providers and the frontend only ever asked for
+two of them:
+
+```
+VOICE_FETCHERS   edge-tts · local-device · elevenlabs · gemini
+requested        edge-tts · local-device
+```
+
+Live against the deployment: `edge-tts` returns 75 languages, `gemini` 1,
+`elevenlabs` 502 "ElevenLabs API key required" — the route works, nothing was
+asking for it.
+
+It now sends the provider's own id, and `LISTABLE_VOICE_PROVIDERS` is checked
+against `VOICE_FETCHERS` by the test so the two cannot drift apart. Where a
+provider has no listable voices the Browse button is hidden rather than opening
+an empty modal — Deepgram is that case: no fetcher, no manual voice id, and no TTS
+models in the catalog at all. Providers with a manual voice id keep the button and
+get told what to type instead.
+
+The fetch also had no status check; a 502 with an unexpected body left the modal
+open and empty. `config.apiEndpoint` was dead too — no provider sets it — and is
+gone.
+
+Live, the voices route: `edge-tts` 200/75 languages · `local-device` 200/0 ·
+`gemini` 200/1 · `elevenlabs` 502 · unknown provider 400.
+
+Two assertions, five mutations. Writing them took four attempts at the same thing
+as before — a generic `} else {` anchor landed on the wrong branch in a
+2000-line file, and one assertion still referenced a constant that had been
+renamed. Anchors here are the comment inside the branch, not its syntax.
+
+
 ### `/dashboard/media-providers/image` — a provider-supplied URL was fetched verbatim
 
 `imageProviders/_base.js`:
@@ -890,7 +932,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 337 assertions, 32 suites, all passed |
+| `npm run test` | 338 assertions, 32 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

@@ -55,6 +55,11 @@ function getImageEditDefaults(providerId, modelId) {
   return {};
 }
 
+// Providers whose voices this router can actually list. Kept here rather than in
+// the component so the Browse button and the picker cannot disagree.
+// VOICE_FETCHERS in backend/open-sse/handlers/ttsProviders/index.js is the truth.
+const LISTABLE_VOICE_PROVIDERS = ["edge-tts", "local-device", "elevenlabs", "gemini"];
+
 function toImagePreviewSrc(value) {
   const trimmed = typeof value === "string" ? value.trim() : "";
   if (!trimmed) return "";
@@ -377,6 +382,10 @@ function EmbeddingExampleCard({ providerId, customAlias }) {
 function TtsExampleCard({ providerId }) {
   const providerAlias = getProviderAlias(providerId);
   const config = TTS_PROVIDER_CONFIG[providerId] || TTS_PROVIDER_CONFIG["edge-tts"];
+  // A Browse button that opens an empty picker is worse than no button: hide it
+  // unless the voices route can serve this provider, or the user can type an id.
+  const canBrowseVoices = config.hasBrowseButton
+    && (LISTABLE_VOICE_PROVIDERS.includes(providerId) || !!config.hasVoiceIdInput);
 
   // Voice state
   const [selectedVoice, setSelectedVoice]     = useState(config.defaultVoiceId || "");
@@ -490,13 +499,25 @@ function TtsExampleCard({ providerId }) {
         setByLang(byLangMap);
         setLanguages(Object.values(byLangMap).sort((a, b) => a.name.localeCompare(b.name)));
       } else {
-        // Use provider-specific apiEndpoint if available, else default to edge-tts voices API
-        const url = config.apiEndpoint
-          ? config.apiEndpoint
-          : `/api/media-providers/tts/voices?provider=${providerId === "local-device" ? "local-device" : "edge-tts"}`;
-        const r = await fetch(url);
-        const d = await r.json();
-        if (d.error) { setModalError(d.error); return; }
+        // Ask the voices route for *this* provider. It used to send
+        // "edge-tts" for everything except local-device, so an ElevenLabs,
+        // Deepgram, Inworld or Minimax page opened a picker full of Microsoft
+        // Edge voices -- picking one and sending it upstream fails. The route
+        // understands four providers and answers 400 for the rest; say so here
+        // rather than substituting a different provider's voice list.
+        if (!LISTABLE_VOICE_PROVIDERS.includes(providerId)) {
+          setModalError(
+            config.hasVoiceIdInput
+              ? `${providerId} does not publish a voice list this router can read — type a voice id instead.`
+              : `${providerId} does not publish a voice list this router can read.`
+          );
+          return;
+        }
+        const res = await fetch(`/api/media-providers/tts/voices?provider=${encodeURIComponent(providerId)}`);
+        const d = await res.json().catch(() => ({}));
+        // No status check: a 502 body carrying a different shape left the modal
+        // open and empty with nothing to explain it.
+        if (!res.ok) { setModalError(d?.error || `Voice list failed (HTTP ${res.status})`); return; }
         setLanguages(d.languages || []);
         setByLang(d.byLang || {});
       }
@@ -654,7 +675,7 @@ function TtsExampleCard({ providerId }) {
           )}
 
           {/* Language row + Browse button (edge-tts, local-device, elevenlabs) */}
-          {config.hasBrowseButton && (
+          {canBrowseVoices && (
             <Row label="Language">
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <button
