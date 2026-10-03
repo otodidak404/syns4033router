@@ -428,6 +428,16 @@ function Playground({ entries, initialEntryId, onLoadAll, activeProviders, model
         </p>
       )}
 
+      {results && (!results.results?.length) && (
+        <div role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-300">
+          {results.note || "The run returned no results."}
+        </div>
+      )}
+      {results && results.ranBaseline && (
+        <p className="text-[11px] text-text-muted">
+          Compared against the same question with no prompt applied.
+        </p>
+      )}
       {results?.results?.length > 0 && (
         <div ref={outRef} className="flex flex-col gap-2">
           {results.results.map((r) => (

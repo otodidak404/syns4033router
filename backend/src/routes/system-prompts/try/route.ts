@@ -129,8 +129,19 @@ async function runLeg({ model, message, systemPrompt }) {
   }));
 
   const started = Date.now();
+  // TIMEOUT_MS was declared here and never used: a provider that accepted the
+  // connection and then said nothing held the request open until the client gave up,
+  // and the dashboard sat on "Running…" with no outcome and no reason.
+  // Not an AbortSignal: handleChat takes (request, clientRawRequest), so passing one
+  // would land in the wrong parameter and be silently ignored while still corrupting
+  // the other. A race is the honest way to bound a call whose signature does not offer
+  // a handle on it.
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`__TIMEOUT__${TIMEOUT_MS}`)), TIMEOUT_MS);
+  });
   try {
-    const res = await handleChat(req);
+    const res = await Promise.race([handleChat(req), timeout]);
     const raw = typeof res === "string" ? res : await res?.text?.();
     const text = extractText(raw);
     // A run that produced no text did not succeed — it failed in a way that left
@@ -144,7 +155,17 @@ async function runLeg({ model, message, systemPrompt }) {
           latencyMs: Date.now() - started,
         };
   } catch (err) {
-    return { ok: false, error: err.message, latencyMs: Date.now() - started };
+    const message = String(err?.message || err);
+    const timedOut = message.startsWith("__TIMEOUT__");
+    return {
+      ok: false,
+      error: timedOut
+        ? `No reply after ${TIMEOUT_MS / 1000}s. The model may be down, or it may not answer this prompt.`
+        : message,
+      latencyMs: Date.now() - started,
+    };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -185,6 +206,16 @@ export async function POST_handler(req, res) {
   if (payload.prompt != null && !entry) {
     return res.status(400).json({ error: "prompt must be a non-empty string" });
   }
+  // An entryId that resolves to nothing is a stale id -- the entry was deleted after
+  // the page loaded. The run used to carry on without the prompted leg, so with
+  // "compare" ticked the operator saw a baseline and nothing else, which reads as
+  // "my prompt made no difference"; with it unticked the response carried an empty
+  // results array and the page rendered nothing at all.
+  if (payload.prompt == null && payload.entryId && !entry) {
+    return res.status(404).json({
+      error: "That system prompt no longer exists. Reload the page and pick another entry.",
+    });
+  }
   if (payload.prompt != null && payload.prompt.length > MAX_PROMPT) {
     return res.status(400).json({ error: `prompt must be under ${MAX_PROMPT} characters` });
   }
@@ -197,6 +228,13 @@ export async function POST_handler(req, res) {
   if (payload.compare) work.push(run(null).then(r => ({ label: "baseline", ...r })));
 
   const results = await Promise.all(work);
+
+  // Nothing to run is a request the operator got wrong, not an empty success.
+  if (results.length === 0) {
+    return res.status(400).json({
+      error: "Nothing to run: no prompt was supplied and the baseline was turned off.",
+    });
+  }
 
   return res.json({
     model,

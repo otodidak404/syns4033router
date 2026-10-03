@@ -1526,6 +1526,46 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### The playground could drop the leg under test without saying so
+
+`resolvePrompt` returns `null` for an `entryId` that no longer resolves — the entry was
+deleted after the page loaded, or the id was stale. The route carried on regardless:
+
+- with **compare** ticked, the response held only the baseline leg, so the operator saw a
+  reply with no prompted reply beside it, which reads as "my prompt made no difference";
+- with compare unticked, `work` was empty and the response was a 200 carrying
+  `results: []`, which the page rendered as nothing at all — no results, no error, and
+  the Run button simply went back to its idle state.
+
+A stale id is now a **404** saying the entry no longer exists, checked before either leg
+is queued. An empty result set is now a **400** rather than a successful empty response.
+
+### The server sent an explanation the page never showed
+
+The route's `note` — "No prompt supplied, so this leg is a baseline only" — was returned
+in the body and never rendered, so the one case where the server had already explained
+itself still looked like silence. The page now shows it, and also confirms on screen when
+a baseline was actually run, which the checkbox only ever claimed.
+
+### TIMEOUT_MS was declared and never used
+
+A provider that accepted the connection and then went quiet held the request open with
+no outcome and no reason, and the dashboard sat on "Running…" until the client gave up.
+The leg is now bounded by a race and reports how long it waited.
+
+The first version of that fix passed an `AbortController` signal into `handleChat`, whose
+second parameter is `clientRawRequest`. The signal was ignored and the other slot
+corrupted — TypeScript did not object because the file is loosely typed. It is a `Promise`
+race now, and `test-system-prompt-playground.mjs` reads `handleChat`'s actual signature so
+that mistake cannot come back.
+
+- `backend/test-system-prompt-playground.mjs` (8 assertions) checks the stale-id 404 runs
+  before the legs are queued, that an empty result set is refused, that the declared
+  timeout is used and cleared, that no options object is passed to `handleChat` and no
+  `AbortController` is constructed, that the page renders both `note` and `ranBaseline`,
+  that both legs are still built, and that the wildcard guard stands. Nine mutation
+  controls, including one that reinstates the `AbortController` version.
+
 ### The "All models (*)" preset could never be clicked
 
 `PROMPT_PRESETS` filters on `p.prompt`, which drops the wildcard preset because it carries
