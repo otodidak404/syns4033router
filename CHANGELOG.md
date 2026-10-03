@@ -1,8 +1,23 @@
-# Changelog
+### /v1/web/fetch handed any URL to the extraction provider
 
-Format: entries under **Fixed** must name **file:line** and be backed by a test
-or a recorded run. Anything unproven belongs under **Known issues**, not there.
-Sections are `## Fixed
+`handleFetch` validated the caller's URL with `new URL(targetUrl)` and stopped
+there, which proves the string parses and nothing else. `169.254.169.254`,
+`127.0.0.1`, `[::1]`, `localhost`, `10/8`, `192.168/16` and `file://` all passed and
+went straight to the extraction provider.
+
+The router does not fetch the URL itself — the request goes to Tavily, Exa,
+Firecrawl or Jina — so this was never a direct read of this container's network.
+It was still the operator paying for upstream calls pointed at addresses that should
+never be reachable, with the extracted result returned as page content, and it was
+inconsistent with the rest of the repo: `checkFetchableUrl` has been in
+`src/lib/net/ssrf.js` since the media-proxy and suggested-models work, wired into
+the provider-node routes, and this was the one caller of an operator-supplied URL
+that was not on it.
+
+The handler now runs the same guard, which also resolves the hostname so a public
+name pointing at a private address is refused, and returns the guard's own status —
+403 for a blocked address, 400 for a bad scheme. A refused URL is logged by host
+rather than in full, since a URL can carry a token in its query string.
 
 ### The fetch handler called its logger as a function
 

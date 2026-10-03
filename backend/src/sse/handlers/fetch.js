@@ -14,6 +14,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { clientApiKeyRequired } from "../../lib/auth/apiKeyGate.js";
+import { checkFetchableUrl } from "../../lib/net/ssrf.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -31,6 +32,7 @@ export async function handleFetch(request) {
   }
 
   const reqUrl = new URL(request.url);
+const safeHost = (u) => { try { return new URL(u).host; } catch { return "?"; } };
   // Accept either `provider` or `model` (UI sends `model` since provider IS the model for webFetch)
   const providerInput = body.provider || body.model;
   const targetUrl = body.url;
@@ -71,12 +73,17 @@ export async function handleFetch(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: url");
   }
 
-  // Validate URL format
-  try {
-    new URL(targetUrl);
-  } catch {
-    log.warn("FETCH", "Invalid URL", { url: targetUrl });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid URL format");
+  // The URL is attacker-controlled. `new URL()` only proves it parses, so
+  // 169.254.169.254, 127.0.0.1 and every private range sailed through and were
+  // handed to the extraction provider. The router does not fetch the URL itself,
+  // but the extraction service is still made to fetch it on the operator's
+  // account, and its answer comes back as content. checkFetchableUrl is the same
+  // guard provider-nodes already uses: it rejects non-http(s) schemes and resolves
+  // the hostname, so a public name pointing at a private address is caught too.
+  const urlCheck = await checkFetchableUrl(targetUrl);
+  if (!urlCheck.ok) {
+    log.warn("FETCH", `Refused URL: ${urlCheck.error}`, { host: safeHost(targetUrl) });
+    return errorResponse(urlCheck.status, urlCheck.error);
   }
 
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers

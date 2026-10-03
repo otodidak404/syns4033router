@@ -152,6 +152,51 @@ t("max_characters truncates and the length matches", async () => {
 
 // ── the menu's own contract ───────────────────────────────────────────────────
 
+t("the handler refuses a URL that resolves to a private address", async () => {
+  // The handler was the one route in the repo that took an attacker-controlled URL
+  // and handed it onward without the guard provider-nodes uses. Driven through the
+  // real guard rather than a regex.
+  const { checkFetchableUrl } = await import(
+    pathToFileURL(path.join(HERE, "src/lib/net/ssrf.js")).href);
+  for (const bad of [
+    "http://169.254.169.254/latest/meta-data/",
+    "http://127.0.0.1:8080/",
+    "http://[::1]/",
+    "http://localhost:3001/",
+    "http://10.0.0.5/",
+    "http://192.168.1.1/",
+    "file:///etc/passwd",
+  ]) {
+    const r = await checkFetchableUrl(bad);
+    assert.equal(r.ok, false, `the guard allowed ${bad}`);
+  }
+  const good = await checkFetchableUrl("https://example.com/page");
+  assert.equal(good.ok, true, `a public URL was refused: ${good.error}`);
+});
+
+t("the handler calls the guard instead of only parsing the URL", () => {
+  const h = fs.readFileSync(path.join(HERE, "src/sse/handlers/fetch.js"), "utf8");
+  assert.ok(h.includes("checkFetchableUrl(targetUrl)"),
+    "handleFetch does not run checkFetchableUrl on the caller's URL");
+  assert.ok(!/Validate URL format/.test(h),
+    "the old new URL() - only validation is still there");
+  // The guard's verdict has to gate the response. Without this, replacing the
+  // refusal branch with `if (false)` left the suite green: the guard tests below
+  // exercise the guard module, which was never touched by that mutation.
+  assert.ok(/if\s*\(\s*!urlCheck\.ok\s*\)/.test(h),
+    "the result of checkFetchableUrl does not gate the response");
+  assert.ok(/return errorResponse\(\s*urlCheck\.status/.test(h),
+    "the refusal does not carry the guard's own status through");
+});
+
+t("a refused URL is logged by host, not in full", () => {
+  const h = fs.readFileSync(path.join(HERE, "src/sse/handlers/fetch.js"), "utf8");
+  const i = h.indexOf("Refused URL");
+  const line = h.slice(h.lastIndexOf("\n", i), h.indexOf("\n", i));
+  assert.ok(!/\{ url: targetUrl \}/.test(line),
+    "the refused URL is logged whole, which can carry a token in its query string");
+});
+
 t("every provider on the web page has a fetchConfig", () => {
   for (const p of getProvidersByKind("webFetch")) {
     assert.ok(AI_PROVIDERS[p.id]?.fetchConfig,
