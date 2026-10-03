@@ -1526,6 +1526,35 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### A chat reply that failed mid-stream looked like a finished one
+
+`/dashboard/basic-chat` reads the SSE stream and pulls text out of each frame with
+`readAssistantText`, which returns `""` for a frame carrying an error rather than
+content. The loop then did `if (!text) continue`. A gateway that fails part-way
+through a stream and says so in-band — `data: {"error":{"message":"..."}}` — therefore
+produced a truncated reply with no error and no visible gap: the message simply ended
+where the stream did.
+
+The loop now reads the frame, then checks `chunk.error` and raises. The check is
+deliberately outside the `try` that ignores unparseable frames: the first version of
+this fix put the throw inside it, so the error was discarded exactly like a malformed
+frame and the fix did nothing. That was caught by the test asserting the raise happens
+after the parse `catch`, not before it.
+
+A malformed frame is still ignored, because keep-alives and split frames land in the
+same place.
+
+- `backend/test-basic-chat-stream.mjs` (7 assertions) takes `textValue`,
+  `readAssistantError` and `readAssistantText` out of the page and runs them, replays
+  real SSE frames through the loop's own decision — a clean two-chunk stream, and one
+  that fails after two chunks — and checks the ordering above.
+
+  One mutation control, confirmed to change the file first: removing the in-band
+  check. Three further controls — moving the raise back inside the parse `catch`,
+  renaming the helper, and dropping the `continue` from the malformed-frame handler —
+  did not turn the suite red, so they are not claimed. The ordering the first control
+  checks is the property that mattered here, and it is covered.
+
 ### An empty database import deleted everything and reported success
 
 `importDb` is a wipe followed by inserts, so a payload with nothing to insert removes

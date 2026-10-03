@@ -70,6 +70,8 @@ const SUITES = [
       ["test-token-refresh-runtime.mjs", false],
       // exercises importDb against a real database
       ["test-db-import-guard.mjs", false],
+      // replays real SSE frames through the page's own parsing decision
+      ["test-basic-chat-stream.mjs", false],
     ];
 
 let failed = 0;

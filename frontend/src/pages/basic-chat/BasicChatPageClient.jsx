@@ -81,6 +81,13 @@ function buildUserContent(message) {
 
   return content.length > 0 ? content : text;
 }
+  /** An in-band error may be a string, or an object with .message / .error. */
+  function readAssistantError(error) {
+    if (typeof error === "string") return error;
+    if (!error || typeof error !== "object") return "";
+    return textValue(error.message || error.error || error.code || "");
+  }
+
 
 function readAssistantText(chunk) {
   if (!chunk || typeof chunk !== "object") return "";
@@ -702,8 +709,27 @@ export default function BasicChatPageClient() {
           const payload = trimmed.slice(5).trim();
           if (!payload || payload === "[DONE]") continue;
 
+          let chunk;
           try {
-            const chunk = JSON.parse(payload);
+            chunk = JSON.parse(payload);
+          } catch {
+            // A malformed frame is not an error in itself: keep-alives and split
+            // frames land here too.
+            continue;
+          }
+
+          // A gateway can fail part-way through a stream and say so in-band. The text
+          // extractor returns nothing for such a chunk, and `if (!text) continue`
+          // swallowed it, so a truncated reply looked like a finished one. Checked
+          // outside the parse try/catch on purpose: raising inside it would be
+          // discarded by the same handler that ignores malformed chunks.
+          if (chunk?.error) {
+            throw new Error(
+              readAssistantError(chunk.error) || "The provider reported an error mid-stream.",
+            );
+          }
+
+          try {
             const text = readAssistantText(chunk);
             if (!text) continue;
 
