@@ -45,6 +45,8 @@ const SUITES = [
       ["test-handler-entrypoints.mjs", true],
       // imports the compiled route modules from dist/, also through "@/"
       ["test-models-and-cors.mjs", true],
+      // parses every .js/.ts under src and open-sse with @babel; no alias loader
+      ["test-unbound-identifiers.mjs", false],
     ];
 
 let failed = 0;

@@ -3,18 +3,18 @@ import { getSettings } from "../../../../lib/localDb.js";
 import { fetchOidcDiscovery, getPublicOrigin, probeOidcClientSecret } from "../../../../lib/auth/oidc.js";
 import { verifyDashboardAuthToken } from "../../../../lib/auth/dashboardSession.js";
 
-async function canAccessTestRoute() {
+async function canAccessTestRoute(req) {
   const settings = await getSettings();
   if (settings.requireLogin === false) return true;
 
-  const cookieStore = { get: (k) => ({ value: (req).cookies?.[k] }) };
+  const cookieStore = { get: (k) => ({ value: req.cookies?.[k] }) };
   const token = cookieStore.get("auth_token")?.value;
   return await verifyDashboardAuthToken(token);
 }
 
 export async function POST_handler(req, res) {
   try {
-    if (!(await canAccessTestRoute())) {
+    if (!(await canAccessTestRoute(req))) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -38,7 +38,7 @@ export async function POST_handler(req, res) {
     }
 
     const discovery = await fetchOidcDiscovery(issuerUrl);
-    const redirectUri = `${getPublicOrigin(request)}/api/auth/oidc/callback`;
+    const redirectUri = `${getPublicOrigin(req)}/api/auth/oidc/callback`;
     const secretProbe = await probeOidcClientSecret({
       tokenEndpoint: discovery.token_endpoint,
       clientId,

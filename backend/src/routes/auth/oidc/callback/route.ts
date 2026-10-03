@@ -20,13 +20,13 @@ export async function GET_handler(req, res) {
   const url = new URL('http://localhost' + req.originalUrl);
   const error = url.searchParams.get("error");
   if (error) {
-    return res.redirect(new URL(`/login?error=${encodeURIComponent(error)}`, getPublicOrigin(request)));
+    return res.redirect(new URL(`/login?error=${encodeURIComponent(error)}`, getPublicOrigin(req)));
   }
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   if (!code || !state) {
-    return res.redirect(new URL("/login?error=oidc_missing_code", getPublicOrigin(request)));
+    return res.redirect(new URL("/login?error=oidc_missing_code", getPublicOrigin(req)));
   }
 
   const cookieStore = { get: (k) => ({ value: (req).cookies?.[k] }) };
@@ -36,19 +36,19 @@ export async function GET_handler(req, res) {
 
   if (!storedState || !storedNonce || !codeVerifier || storedState !== state) {
     clearOidcCookies(cookieStore);
-    return res.redirect(new URL("/login?error=oidc_invalid_state", getPublicOrigin(request)));
+    return res.redirect(new URL("/login?error=oidc_invalid_state", getPublicOrigin(req)));
   }
 
   try {
     const config = await getOidcRuntimeConfig();
     if (!config) {
       clearOidcCookies(cookieStore);
-      return res.redirect(new URL("/login?error=oidc_not_configured", getPublicOrigin(request)));
+      return res.redirect(new URL("/login?error=oidc_not_configured", getPublicOrigin(req)));
     }
 
     const discovery = await fetchOidcDiscovery(config.issuerUrl);
     const discoveredIssuer = discovery.issuer || config.issuerUrl;
-    const redirectUri = `${getPublicOrigin(request)}/api/auth/oidc/callback`;
+    const redirectUri = `${getPublicOrigin(req)}/api/auth/oidc/callback`;
     const tokenData = await exchangeOidcCode({
       tokenEndpoint: discovery.token_endpoint,
       clientId: config.clientId,
@@ -71,16 +71,16 @@ export async function GET_handler(req, res) {
     });
 
     clearOidcCookies(cookieStore);
-    await setDashboardAuthCookie(cookieStore, request, {
+    await setDashboardAuthCookie(cookieStore, req, {
       oidc: true,
       oidcSub: payload.sub || null,
       oidcEmail: pickOidcEmail(payload) || null,
       oidcName: pickOidcDisplayName(payload),
     });
 
-    return res.redirect(new URL("/dashboard", getPublicOrigin(request)));
+    return res.redirect(new URL("/dashboard", getPublicOrigin(req)));
   } catch (error) {
     clearOidcCookies(cookieStore);
-    return res.redirect(new URL(`/login?error=${encodeURIComponent(error.message || "oidc_callback_failed")}`, getPublicOrigin(request)));
+    return res.redirect(new URL(`/login?error=${encodeURIComponent(error.message || "oidc_callback_failed")}`, getPublicOrigin(req)));
   }
 }

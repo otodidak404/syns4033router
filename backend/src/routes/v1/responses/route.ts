@@ -26,5 +26,13 @@ export async function OPTIONS() {
  */
 export async function POST_handler(req, res) {
   await ensureInitialized();
-  return await handleChat(request);
+  // No binding named `request` here either: every POST to /v1/responses threw
+  // ReferenceError. handleChat takes a Web Request.
+  const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  const webReq = new Request(fullUrl, {
+    method: req.method,
+    headers: new Headers(req.headers),
+    body: JSON.stringify(req.body),
+  });
+  return await handleChat(webReq);
 }

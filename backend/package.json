@@ -3,7 +3,7 @@
   "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "SYNS4033ROUTER by codestorm — Express backend",
+  "description": "SYNS4033ROUTER by codestorm \u2014 Express backend",
   "main": "src/server.ts",
   "bin": {
     "9router-v3": "bin/cli.cjs"
@@ -35,6 +35,8 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@babel/parser": "7.29.7",
+    "@babel/traverse": "7.29.7",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cookie-parser": "^1.4.8",

@@ -11,5 +11,7 @@ export async function GET(req, res) {
 }
 
 export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+  // NextResponse is a Next.js import this Express router never had; every
+    // preflight to /api/health threw ReferenceError.
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
 }

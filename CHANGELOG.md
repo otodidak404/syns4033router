@@ -4,6 +4,60 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### Eleven routes read a variable that was never declared
+
+`backend/test-unbound-identifiers.mjs` parses every `.js`, `.ts` and `.tsx` under
+`backend/src` and `backend/open-sse` with `@babel/parser` and reports any
+identifier that is read with no binding in an enclosing scope. It found eleven
+routes in the same shape as the four earlier ones — the parameter is named `req`
+and the body reads `request`.
+
+Confirmed dead on the deployed instance before the fix:
+
+```
+POST /v1/api/chat           500 {"error":"request is not defined"}
+POST /v1/responses/compact  500 {"error":"request is not defined"}
+```
+
+`/v1/api/chat` is the Ollama-compatible chat endpoint and `/v1/responses` was
+equally dead; both answer `200` now, with `oc/space-bunny-free` and no
+regression on `/v1/chat/completions`, `/v1/messages` or
+`/v1beta/models/:generateContent`.
+
+The rest sit behind auth or on paths this instance does not serve, so they were
+fixed on the strength of the class and are **not** claimed verified end to end:
+
+- `auth/oidc/start`, `auth/oidc/callback`, `auth/oidc/test` — `getPublicOrigin(request)`
+- `pricing` — `GET_DEFAULTS` returned `res.json` with no `res` in scope
+- `shutdown` — Next.js `headers()` with no import
+- `health` — `NextResponse` with no import, so every preflight threw
+- `media-proxy` — `NextResponse`, a `CORS_HEADERS` that was never defined, and
+  `HEAD` calling `GET`, which does not exist under that name
+- `cli-tools/antigravity-mitm` — `execAsync` with no import, so the availability
+  probe threw instead of reporting `agy` as missing
+
+### The check itself has two blind spots, both found by testing it
+
+It skips a name read only inside `typeof`, which is correct — `typeof x` on an
+undeclared name does not throw. And it skips object and class *keys* while still
+reading their *values*: skipping the whole `ObjectProperty` would have missed
+`clientApiKeyRequired({ model: modelStr })`, which is the exact shape of the
+`search.js` defect. It has a self-test that reproduces all four past bugs and one
+that feeds it correctly-bound code, so a rewrite that goes quiet fails.
+
+`@babel/parser` and `@babel/traverse` are declared as backend devDependencies —
+they were already resolving transitively at 7.29.7 through the frontend, and
+relying on that would leave the check one version bump away from silently
+disappearing.
+
+Four mutation controls, run against the real files: removing the TTS
+`apiKey` declaration, restoring `modelStr`, removing the `hashApiKey` import, and
+restoring `request.headers`. The last one did **not** fire while the check was
+`.js`-only, which is why `.ts` is in scope now — three of the four original
+defects lived in a `.ts` route file.
+
+xed
+
 ### /v1beta could run any model without a key, and never worked at all
 
 `POST /v1beta/models/<model>:generateContent` — the Gemini-compatible endpoint —

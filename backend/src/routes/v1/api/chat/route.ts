@@ -24,14 +24,23 @@ export async function OPTIONS() {
 export async function POST_handler(req, res) {
   await ensureInitialized();
   
-  const clonedReq = request.clone();
+  // The handler is (req, res) because autoRouter calls handler(req, res, {...}),
+  // and there is no binding named `request` -- every call to this endpoint threw
+  // ReferenceError. handleChat wants a Web Request, so build one the way the
+  // Claude-format route does.
+  const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  const clonedReq = new Request(fullUrl, {
+    method: req.method,
+    headers: new Headers(req.headers),
+    body: JSON.stringify(req.body),
+  });
   let modelName = "llama3.2";
   try {
     const body = await clonedReq.json();
     modelName = body.model || "llama3.2";
   } catch {}
 
-  const response = await handleChat(request);
+  const response = await handleChat(clonedReq);
   return transformToOllama(response, modelName);
 }
 

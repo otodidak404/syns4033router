@@ -28,9 +28,12 @@ export async function POST_handler(req, res) {
   await ensureInitialized();
   const body = req.body;
   body._compact = true;
-  const newRequest = new Request(req.url, {
+  // `request.headers` had no binding here either, and req.url is relative, so the
+  // Request constructor rejected it as well. Absolute URL, real headers.
+  const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  const newRequest = new Request(fullUrl, {
     method: "POST",
-    headers: request.headers,
+    headers: new Headers(req.headers),
     body: JSON.stringify(body)
   });
   return await handleChat(newRequest);

@@ -75,7 +75,10 @@ export async function GET(req, res) {
     let isAgyInstalled = false;
     try {
       const cmd = process.platform === "win32" ? "where agy" : "which agy";
-      await execAsync(cmd, { windowsHide: true });
+      // execAsync was never imported; the availability probe threw instead of
+      // reporting that agy is missing, so the card always showed an error.
+      const { execAsync } = await import("node:child_process");
+      await new Promise((resolve) => execAsync(cmd, { windowsHide: true }, () => resolve()));
       isAgyInstalled = true;
     } catch {
       // Fallback: check standard paths or assume installed if DNS was ever enabled

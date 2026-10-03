@@ -1,5 +1,13 @@
 import { fetchWithRedirectChecks } from "../../lib/net/ssrf.js";
 
+// NextResponse was a Next.js import this Express router never had, and the
+// replacement used a header table that was not in scope either.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+  "Access-Control-Allow-Headers": "*",
+};
+
 
 
 // Trusted video/image CDN domains that we allow to proxy
@@ -61,7 +69,7 @@ export async function GET_handler(req, res) {
     });
 
     if (!upstream.ok && upstream.status !== 206) {
-      return new NextResponse(null, { status: upstream.status });
+      return new Response(null, { status: upstream.status, headers: CORS_HEADERS });
     }
 
     const contentType =
@@ -79,7 +87,7 @@ export async function GET_handler(req, res) {
     if (contentLength) headers.set("Content-Length", contentLength);
     if (contentRange) headers.set("Content-Range", contentRange);
 
-    return new NextResponse(upstream.body, {
+    return new Response(upstream.body, {
       status: upstream.status,
       headers,
     });
@@ -98,5 +106,5 @@ export async function GET_handler(req, res) {
 }
 
 export async function HEAD(request) {
-  return GET(request);
+  return GET_handler(request);
 }

@@ -120,7 +120,7 @@ export async function DELETE_handler(req, res) {
  * GET /api/pricing/defaults
  * Get default pricing configuration
  */
-export async function GET_DEFAULTS() {
+export async function GET_DEFAULTS(req, res) {
   try {
     const defaultPricing = getDefaultPricing();
     return res.json(defaultPricing);

@@ -6,7 +6,7 @@ export async function POST(req, res) {
   }
 
   const secret = process.env.SHUTDOWN_SECRET;
-  const authorization = headers().get("authorization");
+  const authorization = req.headers?.authorization;
 
   if (!secret || authorization !== `Bearer ${secret}`) {
     return res.status(401).json({ success: false, message: "Unauthorized" });

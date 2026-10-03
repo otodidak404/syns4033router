@@ -14,14 +14,14 @@ export async function GET_handler(req, res) {
   try {
     const config = await getOidcRuntimeConfig();
     if (!config) {
-      return res.redirect(new URL("/login?error=oidc_not_configured", getPublicOrigin(request)));
+      return res.redirect(new URL("/login?error=oidc_not_configured", getPublicOrigin(req)));
     }
 
     const discovery = await fetchOidcDiscovery(config.issuerUrl);
     const state = createOidcState();
     const nonce = createOidcNonce();
     const { verifier, challenge } = createPkcePair();
-    const redirectUri = `${getPublicOrigin(request)}/api/auth/oidc/callback`;
+    const redirectUri = `${getPublicOrigin(req)}/api/auth/oidc/callback`;
     const authUrl = buildOidcAuthorizationUrl({
       authorizationEndpoint: discovery.authorization_endpoint,
       clientId: config.clientId,
@@ -35,7 +35,7 @@ export async function GET_handler(req, res) {
     const cookieStore = { get: (k) => ({ value: (req).cookies?.[k] }) };
     const baseOptions = {
       httpOnly: true,
-      secure: shouldUseSecureCookie(request),
+      secure: shouldUseSecureCookie(req),
       sameSite: "lax",
       path: "/",
       maxAge: 10 * 60,
@@ -46,6 +46,6 @@ export async function GET_handler(req, res) {
 
     return res.redirect(authUrl);
   } catch (error) {
-    return res.redirect(new URL(`/login?error=${encodeURIComponent(error.message || "oidc_start_failed")}`, getPublicOrigin(request)));
+    return res.redirect(new URL(`/login?error=${encodeURIComponent(error.message || "oidc_start_failed")}`, getPublicOrigin(req)));
   }
 }
