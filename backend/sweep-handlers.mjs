@@ -80,3 +80,12 @@ for (const f of files) {
 }
 
 console.log("@@RESULT@@" + JSON.stringify(report));
+
+// The sweep opens a SQLite handle and a fetch pool, so the event loop stays
+// alive after the last line and the process is killed by the outer timeout --
+// exit 124 on a run that actually completed. Report the verdict through the exit
+// code too, so a caller can tell "clean finish" from "finished then hung".
+process.exitCode = process.exitCode || (report.refErr.length || report.other.length ? 1 : 0);
+setTimeout(() => process.exit(process.exitCode || 0), 250).unref();
+for (const h of process._getActiveHandles?.() ?? []) h.unref?.();
+for (const h of process._getActiveRequests?.() ?? []) h.unref?.();
