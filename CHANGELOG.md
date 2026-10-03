@@ -3,6 +3,47 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/docs`, second pass: the page was missing a provider, not just an endpoint
+
+Asked whether the docs were done after the endpoint fix. They were not. The first
+pass audited endpoints; it never compared the provider list to the catalog. Doing
+that surfaced four more things:
+
+```
+MODEL MEDIA di docs, tak ada di router : 0      -- nothing documented that stopped existing
+router ada, docs tak ada                : 88    -- LLM/TTS providers, out of scope, fine
+MODEL MEDIA di router, hilang dari docs : 3     -- cx/gpt-5.5-image, cx/gpt-5.4-image, cx/gpt-5.3-image
+```
+
+`cx` (Codex) serves three image models through `/v1/images/generations` and the
+page never mentioned it -- no section, no PROVIDERS entry, no CONTAINER_MAP entry,
+no model data. So an operator using a Codex image model would not find it in the
+reference at all. Added all four pieces plus a section.
+
+Also removed `const MODEL_DATA = null; // will be populated by fetch`: it appeared
+exactly once, was never read or written, and the file contains no `fetch` at all.
+The catalog comes from `EMBEDDED_MODELS`. The comment was describing a mechanism
+that does not exist.
+
+And the iframe had no `sandbox`. The document is same-origin and runs scripts, so
+it now carries `sandbox="allow-scripts allow-same-origin allow-popups allow-forms"`
+-- the first two are both required, without `allow-same-origin` the styles are
+blocked too.
+
+Two corrections to my own audit, both from reading source and trusting it:
+
+- `MODEL_DATA = null` looked like the model lists rendered empty. In a real
+  browser all 19 `.model-list` containers are populated and there are no console
+  errors; the data was in `EMBEDDED_MODELS` the whole time.
+- Three functions looked dead. They are called from `onclick` attributes in the
+  markup, not from within the script.
+
+Writing the provider assertion took three tries for the usual reason: `cx` and
+`leonardo` do not use the same container shape (`all` versus `img`/`vid`), so
+the container ids have to be read out of `CONTAINER_MAP` instead of derived from
+the provider key. Eight mutations, all caught.
+
+
 ### Verification config: the readiness poll targeted a port this app never opens
 
 `hermes verify` failed readiness with `connection refused` on
@@ -667,7 +708,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 319 assertions, 31 suites, all passed |
+| `npm run test` | 322 assertions, 31 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

@@ -26,6 +26,7 @@ export default function DocsPage() {
 
       {/* Docs iframe — fills remaining height */}
       <iframe
+        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
         src="/image-video-docs.html"
         className="flex-1 w-full border-0 min-h-0"
         title="Image & Video API Reference"

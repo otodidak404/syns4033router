@@ -16,7 +16,7 @@
 import assert from "assert";
 import fs from "node:fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND = path.join(HERE, "..", "frontend");
@@ -25,12 +25,19 @@ const PAGE = path.join(FRONTEND, "src", "pages", "docs", "page.jsx");
 const ROUTES = path.join(HERE, "src", "routes");
 
 let pass = 0;
-const t = (name, fn) => {
-  try { fn(); console.log(`  ok  ${name}`); pass++; }
-  catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); process.exitCode = 1; }
-};
+const pending = [];
+const t = (name, fn) => pending.push(
+  Promise.resolve().then(fn)
+    .then(() => { console.log(`  ok  ${name}`); pass++; })
+    .catch((e) => { console.error(`  FAIL ${name}\n       ${e.message}`); process.exitCode = 1; }),
+);
 
 const html = fs.readFileSync(DOCS, "utf8");
+
+// The catalog is ESM and imports sibling modules, so it is loaded in place
+// rather than parsed or reimplemented here.
+const CATALOG = pathToFileURL(path.join(HERE, "..", "backend", "open-sse", "config", "providerModels.js")).href;
+const providerCatalog = async () => (await import(CATALOG)).PROVIDER_MODELS;
 
 const norm = (x) => x.replace(/\{[^}]+\}|\[[^\]]+\]/g, "").replace(/\/+$/, "");
 
@@ -61,6 +68,20 @@ function routes(dir, prefix) {
  * the card — so matching anywhere in a card returns the images card and every
  * check below passes against the wrong markup. Key on the header instead.
  */
+/** The model ids the docs ship, per provider, parsed out of the script. */
+function embeddedModels() {
+  const src = html.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
+  const open = src.indexOf("const EMBEDDED_MODELS");
+  assert.ok(open > -1, "EMBEDDED_MODELS is gone from the docs");
+  const brace = src.indexOf("{", src.indexOf("=", open));
+  let depth = 0;
+  for (let i = brace; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) return JSON.parse(src.slice(brace, i + 1));
+  }
+  throw new Error("EMBEDDED_MODELS is not a closed object literal");
+}
+
 const cards = new Map();
 for (const chunk of html.split('<div class="endpoint-card">').slice(1)) {
   const m = chunk.match(/endpoint-path">([^<]+)</);
@@ -92,10 +113,68 @@ t("the video card carries its method, parameters and closing markup", () => {
   assert.ok(card.trimEnd().endsWith("</div>"), "the card is never closed");
 });
 
+t("every media provider in the router has a section and a populated list", async () => {
+  // cx was serving three image models and the page never mentioned it: the
+  // section, the PROVIDERS entry, the CONTAINER_MAP entry and the model data
+  // were all missing. Scanning for endpoints could not see this -- the endpoint
+  // was there, only the provider was undocumented.
+  const catalog = await providerCatalog();
+  const docs = embeddedModels();
+  const missing = Object.entries(catalog)
+    .filter(([, v]) => v.some((m) => m.type === "image" || m.type === "video"))
+    .map(([k]) => k)
+    .filter((k) => !(k in docs));
+  assert.equal(missing.length, 0, "media provider missing from the docs:\n       " + missing.join("\n       "));
+
+  // A provider needs a section, a model-list container, a PROVIDERS entry and a
+  // CONTAINER_MAP entry, or the script renders nothing under its heading.
+  const script = html.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
+  // Scope to CONTAINER_MAP: the same key appears earlier in PROVIDERS with a
+  // label instead of container ids, and matching that reads the label as one.
+  const containerMap = /const CONTAINER_MAP\s*=\s*\{([\s\S]*?)\n\};/.exec(script);
+  assert.ok(containerMap, "CONTAINER_MAP is gone from the docs");
+  for (const key of Object.keys(docs)) {
+    assert.ok(html.includes(`class="section" id="${key}"`), `${key} has no section`);
+    const forms = [`${key}: { label:`, `'${key}': { label:`];
+    assert.ok(forms.some((f) => script.includes(f)), `${key} is not in PROVIDERS`);
+
+    // leonardo and weavy split image and video across two containers, so the
+    // container names are not derivable from the provider key — read them back
+    // out of CONTAINER_MAP rather than guessing.
+    const map = new RegExp(`(?:'|")?${key}(?:'|")?:\\s*\\{([\\s\\S]*?)\\}`).exec(containerMap[1]);
+    assert.ok(map, `${key} is not in CONTAINER_MAP`);
+    const targets = [...map[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    assert.ok(targets.length, `${key} maps to no container`);
+    for (const id of targets) {
+      assert.ok(html.includes(`id="${id}"`), `${key} maps to ${id}, which is not in the markup`);
+    }
+  }
+});
+
+t("every image and video model documented still exists in the router", async () => {
+  const ids = new Set(Object.values(await providerCatalog()).flat().map((m) => m.id));
+  const ghost = Object.entries(embeddedModels())
+    .flatMap(([p, ms]) => ms.filter((m) => m.type === "image" || m.type === "video").map((m) => `${p}/${m.id}`))
+    .filter((x) => !ids.has(x.split("/").slice(1).join("/")));
+  assert.equal(ghost.length, 0, "documented but no longer served:\n       " + ghost.join("\n       "));
+});
+
+t("the dead MODEL_DATA placeholder stays gone", () => {
+  // It sat next to the comment "will be populated by fetch" while the file
+  // contained no fetch at all and the catalog came from EMBEDDED_MODELS.
+  assert.ok(!html.includes("MODEL_DATA"), "the unused MODEL_DATA declaration is back");
+  assert.ok(!/will be populated by fetch/.test(html), "the comment claiming a fetch is back");
+});
+
 t("the page points at the file that exists", () => {
   const page = fs.readFileSync(PAGE, "utf8");
   assert.ok(fs.existsSync(DOCS), "the docs file is missing");
   // The iframe and the "open in new tab" link must both resolve.
+  // The iframe loads a same-origin document that runs scripts, so it needs an
+  // explicit sandbox. Without allow-scripts the docs break; without
+  // allow-same-origin the styles are blocked too.
+  assert.ok(/<iframe[\s\S]{0,300}?sandbox="[^"]*allow-scripts/.test(page), "the iframe is not sandboxed");
+  assert.ok(/sandbox="[^"]*allow-same-origin/.test(page), "the iframe sandbox would block the styles");
   const targets = [...page.matchAll(/(?:src|href)="(\/[^"]+\.html)"/g)].map((m) => m[1]);
   assert.ok(targets.length >= 2, "the page no longer offers both the iframe and the link");
   for (const tgt of targets) {
@@ -124,4 +203,5 @@ t("the HTML structure is still balanced", () => {
   }
 });
 
-console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`);
+Promise.all(pending).then(() =>
+  console.log(`\n${pass} passed${process.exitCode ? ", some failed" : ""}`));
