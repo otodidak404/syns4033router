@@ -3,6 +3,7 @@ import { OAUTH_ENDPOINTS, GITHUB_COPILOT, REFRESH_LEAD_MS } from "../config/appC
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import path from "path";
 import { execFile } from "child_process";
+import fs from "node:fs";
 import { promisify } from "util";
 
 // xAI refresh — wraps the class method from src/lib/oauth/services/xai.js so
@@ -71,6 +72,20 @@ async function dedupRefresh(provider, oldToken, fn, log) {
 }
 
 // Check if refresh result indicates unrecoverable error (caller should stop retry, force re-auth)
+/**
+ * This module refreshes some providers by shelling out to Python. This deployment
+ * provides no interpreter and no virtualenv -- the image is node:22-alpine -- and
+ * `weavy_refresh.py` is not in the repository, so every one of those refreshes failed
+ * with a bare ENOENT that says nothing about the cause. Returns the pieces that are
+ * missing so the caller can say so instead.
+ */
+function missingPythonRuntime(pythonPath, scriptPath) {
+  const missing = [];
+  if (!fs.existsSync(pythonPath)) missing.push(pythonPath);
+  if (scriptPath && !fs.existsSync(scriptPath)) missing.push(scriptPath);
+  return missing;
+}
+
 export function isUnrecoverableRefreshError(result) {
   return (
     result &&
@@ -231,6 +246,12 @@ export async function refreshLeonardoToken(cookieStr, log) {
   return dedupRefresh("leonardo", cookieStr, async () => {
     try {
       const venvPython = path.resolve(process.cwd(), ".venv/bin/python");
+      const missingRuntime = missingPythonRuntime(venvPython, null);
+      if (missingRuntime.length) {
+        log?.warn?.("TOKEN_REFRESH",
+          `Leonardo token refresh needs Python at ${venvPython}, which this deployment does not provide.`);
+        return null;
+      }
       const pythonCode = `
 import sys, json, requests, base64, socket
 
@@ -468,6 +489,14 @@ export async function refreshWeavyToken(email, credentialsOrLog, logOrUndefined)
       const venvPython = path.resolve(process.cwd(), ".venv/bin/python");
       const scriptPath = path.resolve(process.cwd(), "src/automation/weavy_refresh.py");
       const profilesDir = path.resolve(process.cwd(), "profiles/weavy");
+
+      const missingRuntime = missingPythonRuntime(venvPython, scriptPath);
+      if (missingRuntime.length) {
+        log?.warn?.("TOKEN_REFRESH",
+          `Weavy token refresh needs Python and ${scriptPath}, which this deployment ` +
+          `does not provide: ${missingRuntime.join(", ")}`);
+        return null;
+      }
       
       const execFileAsync = promisify(execFile);
       const { stdout } = await execFileAsync(venvPython, [

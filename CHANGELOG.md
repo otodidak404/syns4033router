@@ -1526,6 +1526,31 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### Leonardo and Weavy token refresh died with a bare ENOENT
+
+`open-sse/services/tokenRefresh.js` refreshes those two providers by shelling out to
+Python — Leonardo through an inline `-c` program, Weavy through
+`src/automation/weavy_refresh.py`. Neither exists here: the image is `node:22-alpine`
+with no interpreter and no virtualenv, and `weavy_refresh.py` is not in the repository
+alongside the three `.py` files that are. Both reached `execFile` and failed with a
+spawn error that says nothing about the cause, so an operator reading the logs could
+not tell a missing runtime from a broken refresh.
+
+Both now check for what is missing first and say what it is: the interpreter for
+Leonardo, the interpreter and the script for Weavy.
+
+That closes the third family of Python-dependent features in this router, after
+`videoProviders/weavy.js` and the CodeBuddy signup routes. All three now report why
+they cannot run rather than failing opaquely. What none of them do is work — this
+deployment cannot run any of them, and the fix is the message, not the capability.
+
+- `backend/test-token-refresh-runtime.mjs` (7 assertions) checks the repository really
+  is missing the script and the virtualenv, evaluates `missingPythonRuntime` out of the
+  module and runs it against paths that exist and paths that do not, and requires that
+  each caller branches on the result before spawning. Two mutation controls, both
+  confirmed to change the file first: removing the Leonardo preflight and removing the
+  Weavy one. A third was written and did not apply to the file, so it is not counted.
+
 ### Sixteen writers on the automation page parsed the response before checking it
 
 Every writer on `/dashboard/automation` did `const data = await res.json()` and only
