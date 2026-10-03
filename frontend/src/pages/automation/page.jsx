@@ -38,6 +38,24 @@ export default function AutomationDashboard() {
 // 1. CODEBUDDY COMPONENT
 // ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Read a response as JSON without throwing when it is not JSON.
+ *
+ * Every writer on this page did `const data = await readJson(res)` and only then looked
+ * at `res.ok`. A platform 502, a login redirect or a rate-limit page is HTML, so the
+ * parse threw *before* the status check: the error branch never ran, the catch wrote to
+ * the console, and the operator was told nothing. With this, the same body reaches
+ * the error branch as a message.
+ */
+async function readJson(res) {
+  const raw = await res.text();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { error: `Unexpected response from the server (HTTP ${res.status})` };
+  }
+}
+
 function CodeBuddyTab() {
   const providerNames = {
     codebuddy: "CodeBuddy",
@@ -185,7 +203,7 @@ function CodeBuddyTab() {
   const loadState = async (includeSettings = false) => {
     try {
       const res = await fetch("/api/automation/codebuddy");
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setAccounts(data.accounts || []);
         setActiveJobId(data.active_job_id || "");
@@ -233,7 +251,7 @@ function CodeBuddyTab() {
         }
       }
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -341,7 +359,7 @@ function CodeBuddyTab() {
           provider: targetProvider
         })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setAddGoogleText("");
         setAddGoogleStatus(
@@ -373,7 +391,7 @@ function CodeBuddyTab() {
           domain: selectedAmmailDomain || undefined
         })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setAddGoogleStatus(`✓ Generated ${data.created?.length || 0} temp mail accounts and started signup job.`);
         loadState();
@@ -393,7 +411,7 @@ function CodeBuddyTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "run-all", concurrency, provider: targetProvider })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         clearedEmails.current.clear();
         setActiveJobId(data.job_id);
@@ -413,14 +431,14 @@ function CodeBuddyTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "stop" })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         loadState();
       } else {
         alert(data.error);
       }
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -431,7 +449,7 @@ function CodeBuddyTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "run" })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         clearedEmails.current.clear();
         setActiveJobId(data.job_id);
@@ -440,7 +458,7 @@ function CodeBuddyTab() {
         alert(data.error);
       }
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -451,7 +469,7 @@ function CodeBuddyTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "add-to-9router" })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         alert(`✓ ${data.message || "Added successfully!"}`);
         loadState();
@@ -459,7 +477,7 @@ function CodeBuddyTab() {
         alert(`Failed: ${data.error}`);
       }
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -472,7 +490,7 @@ function CodeBuddyTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "bulk-add-to-9router", provider: targetProvider })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         alert(data.message);
         loadState();
@@ -480,7 +498,7 @@ function CodeBuddyTab() {
         alert(`Failed: ${data.error}`);
       }
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -500,7 +518,7 @@ function CodeBuddyTab() {
       }
       loadState();
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -526,7 +544,7 @@ function CodeBuddyTab() {
         loadState();
       }
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -722,7 +740,7 @@ function CodeBuddyTab() {
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ proxy: p }),
                                     });
-                                    const data = await res.json();
+                                    const data = await readJson(res);
                                     results[p] = data;
                                   } catch {
                                     results[p] = { ok: false, error: "Request failed" };
@@ -819,12 +837,21 @@ function CodeBuddyTab() {
                     setJobLogs([]);
                     setActiveJob(null);
                     try {
-                      await fetch("/api/automation/codebuddy", {
+                      const res = await fetch("/api/automation/codebuddy", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ action: "clear-logs" })
                       });
-                    } catch (e) { /* silent */ }
+                      // The logs are cleared locally either way. If the server refuses,
+                      // say so -- they come back on the next reload, and a silent
+                      // failure reads as the server having lost them for good.
+                      if (!res.ok) {
+                        const data = await readJson(res);
+                        alert(data.error || `Could not clear the logs (HTTP ${res.status})`);
+                      }
+                    } catch (e) {
+                      alert(e?.message || String(e));
+                    }
                   }}>
                     Clear
                   </Button>
@@ -1374,7 +1401,7 @@ function AmmailTab() {
   const loadState = async () => {
     try {
       const res = await fetch("/api/automation/ammail");
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setConfigured(data.configured);
         setConnectionOk(data.connection_ok);
@@ -1458,7 +1485,7 @@ function AmmailTab() {
           api_key: apiKey,
         })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setTestResult({ ok: true, message: "Worker connection succeeded!" });
         loadState();
@@ -1491,7 +1518,7 @@ function AmmailTab() {
           telegram_bot_token: telegramBotToken
         })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setTestResult({ ok: true, message: "Success! The Worker has been deployed to Cloudflare and is ready." });
         setBaseUrl(data.base_url || "");
@@ -1517,7 +1544,7 @@ function AmmailTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "webhook-register" })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         alert("Webhook registered successfully!");
         loadState();
@@ -1541,7 +1568,7 @@ function AmmailTab() {
           domain: composerDomain
         })
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setShowComposeModal(false);
         const newAddress = `${composerAlias}@${composerDomain}`.toLowerCase();
@@ -1576,7 +1603,7 @@ function AmmailTab() {
         loadState();
       }
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -1586,13 +1613,13 @@ function AmmailTab() {
     setHtmlZoom(1.0);
     try {
       const res = await fetch(`/api/automation/ammail/otps/${id}`);
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setSelectedOtpDetails(data.otp);
         loadState();
       }
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -1611,7 +1638,7 @@ function AmmailTab() {
       }
       loadState();
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 
@@ -1631,7 +1658,7 @@ function AmmailTab() {
       setSelectedOtpDetails(null);
       loadState();
     } catch (e) {
-      console.error(e);
+      alert(e?.message || String(e));
     }
   };
 

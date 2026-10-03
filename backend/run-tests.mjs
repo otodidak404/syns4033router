@@ -66,6 +66,7 @@ const SUITES = [
       // drives the public webhook with real HMACs over real bytes
       ["test-ammail-webhook.mjs", false],
       ["test-ammail-deploy-commands.mjs", false],
+      ["test-automation-page-writers.mjs", false],
     ];
 
 let failed = 0;

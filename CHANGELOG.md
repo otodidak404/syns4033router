@@ -1526,6 +1526,42 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### Sixteen writers on the automation page parsed the response before checking it
+
+Every writer on `/dashboard/automation` did `const data = await res.json()` and only
+then looked at `res.ok`. A platform 502, a login redirect or a rate-limit page is
+HTML, so the parse threw *before* the status check: the error branch never ran, the
+catch wrote to the console, and the operator was told nothing. This is the same shape
+as the defects already fixed on the web page, on the proxy-pools page and in
+`handleSave`.
+
+All sixteen now go through a `readJson` helper that reads the body as text and turns
+a non-JSON body into `{ error: "Unexpected response from the server (HTTP …)" }`, so
+the same response reaches the error branch as a message.
+
+### Eleven of those catches reported nothing at all
+
+Eleven catch blocks guarding a `fetch` did nothing but `console.error(e)`. They now
+surface the failure, using `alert` as the surrounding code already does. One more was
+`catch (e) { /* silent */ }`: clearing the job logs hides the result locally whether or
+not the server accepted it, so a refusal left the logs to reappear on the next reload
+with no explanation. It now checks the response and says so.
+
+Three `console.error(e)` calls remain and are correct: they guard a `localStorage`
+parse during initialisation, where a corrupted entry should not stop the page.
+
+- `backend/test-automation-page-writers.mjs` (7 assertions) extracts `readJson` out of
+  the page and runs it against real `Response` objects — a JSON body, an HTML 502, an
+  empty body, a truncated one, and a JSON error body — then checks that no writer
+  parses unguarded and that no fetch guard is silent.
+
+  One mutation control, confirmed to change the file first: putting `res.json()` back,
+  which turns the suite red. A second control that reverted one `alert` to
+  `console.error` did not, because it matched only one of the eleven; that control is
+  not claimed. The assertion that drove it — "every fetch guard does something visible"
+  — is the one that was green when it should not have been, and the fix above came
+  from running the suite rather than trusting it.
+
 ### The Cloudflare deploy action ran shell commands built from the request body
 
 `POST /api/automation/ammail` with `action: "deploy"` invoked every wrangler step
