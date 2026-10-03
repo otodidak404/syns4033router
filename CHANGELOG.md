@@ -4,6 +4,58 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### A failed read on the media-provider list looked like "you have no connections"
+
+`/dashboard/media-providers/[kind]/page.jsx` — which is the list page for STT —
+swallowed all three of its reads with `.catch(() => {})`. Every card derives its
+badge from the `connections` array, so an outage rendered every provider as
+"0 Added", and the operator's reading was that their STT connections had been
+deleted. The reads now report, the page says it is incomplete, a card shows
+"Status unknown" instead of "0 Added", and the enable/disable toggle refuses to
+fire against a list that was never loaded — writing on the strength of an empty
+list is how a burst toggle ends up disabling everything.
+
+### Saving a fallback strategy could erase every other provider's strategy
+
+`ConnectionsCard.saveStrategy` read `/api/settings` with
+`const data = res.ok ? await res.json() : {}`. On a failed read that produced an
+empty map, and `providerStrategies` is a whole-map PATCH — so one 500 while
+saving a round-robin strategy for one provider wiped the strategies of every
+other provider. The read is now guarded like the write. Same shape as the
+`comboStrategies` wipe fixed earlier on the combo page.
+
+### Eleven writes in two shared components reported success on failure
+
+`ConnectionsCard` and `ModelsCard` are mounted by every media-provider detail
+page, STT included. Both checked `res.ok` and then said nothing when it was
+false: delete, toggle, proxy change, reorder, add connection, edit connection,
+set alias, remove alias, add custom model, remove custom model. `fetch` rejects
+only on a network error, so an HTTP 409 ran straight past the check. All of them
+go through `expectOk` now and render the failure. Reordering already rolled back
+on failure — the rollback was never the problem, the silence was.
+
+`ModelsCard.handleTestModel` also read `res.json()` unguarded, so a 500 with a
+non-JSON body threw out of the try and left the card spinning.
+
+### A claim in this changelog was wrong
+
+`d276325` recorded "PATCH provider list/detail/ConnectionsCard". The test written
+for that work never mentioned ConnectionsCard — the string does not appear in
+`test-providers-page.mjs` at all. ConnectionsCard is 634 lines and ModelsCard 304,
+both reachable from the STT page, both unchecked until now.
+
+- `backend/test-media-shared-cards.mjs` (13 assertions) covers all three files and
+  first asserts that the STT page really does mount the two components, so it
+  cannot quietly stop applying. Seven mutation controls: reverting the settings
+  wipe, reverting the silent delete, deleting the reorder message, reverting the
+  alias write, reverting the model-test body guard, removing the list's `res.ok`
+  check, and removing the toggle block. Six of the seven failed to fire on the
+  first attempt because the assertion was too loose — a neighbouring handler's
+  `setActionError("")` satisfied a check that meant to see the reorder's own
+  message.
+
+xed
+
 ### Four STT models advertised a language setting that was thrown away
 
 `/dashboard/media-providers/stt` shows a Language field whenever the selected

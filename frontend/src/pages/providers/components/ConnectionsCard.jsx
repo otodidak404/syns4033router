@@ -34,6 +34,20 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const [isCooldown, setIsCooldown] = useState(false);
+  // Every writer below used to swallow an HTTP failure. fetch() rejects only on a
+  // network error, so a 400/404/409 from a write ran straight past the `if (res.ok)`
+  // that was supposed to be the check and the UI reported nothing -- the operator
+  // clicked save, the card moved, the server had refused.
+  const [actionError, setActionError] = useState("");
+
+  const runWrite = async (label, fn) => {
+    setActionError("");
+    try {
+      await fn();
+    } catch (e) {
+      setActionError(e?.message ? `${label}: ${e.message}` : `${label} failed`);
+    }
+  };
   const proxyDropdownRef = useRef(null);
 
   const proxyPoolMap = new Map((proxyPools || []).map((p) => [p.id, p]));
@@ -224,7 +238,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, apiKey: formData.apiKey }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       setValidationResult(data.valid ? "success" : "failed");
     } catch { setValidationResult("failed"); }
     finally { setValidating(false); }
@@ -390,8 +404,12 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 
   const saveStrategy = async (strategy, stickyLimit) => {
     try {
-      const res = await fetch("/api/settings", { cache: "no-store" });
-      const data = res.ok ? await res.json() : {};
+      // A failed read used to become `{}`, and `updated` was then PATCHed as the
+      // whole providerStrategies map -- so one 500 while saving a fallback
+      // strategy erased every other provider's strategy. The map is merged, so the
+      // read has to succeed before anything is written.
+      const res = await fetch("/api/settings", { cache: "no-store" }).then(expectOk);
+      const data = await res.json();
       const current = data.providerStrategies || {};
       const override = {};
       if (strategy) override.fallbackStrategy = strategy;
@@ -400,7 +418,8 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       if (Object.keys(override).length === 0) delete updated[providerId];
       else updated[providerId] = override;
       await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerStrategies: updated }) }).then(expectOk);
-    } catch (e) { console.log("saveStrategy error:", e); }
+      setActionError("");
+    } catch (e) { setActionError(`Could not save the strategy: ${e?.message || e}`); }
   };
 
   // Promise.all resolves even when the server answers 404 or 500 — fetch only
@@ -415,7 +434,14 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         fetch(`/api/providers/${next[i1].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i1 }) }).then(expectOk),
         fetch(`/api/providers/${next[i2].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i2 }) }).then(expectOk),
       ]);
-    } catch { await fetch_(); }
+      setActionError("");
+    } catch (e) {
+      // The rollback was already here; the failure was not. Reordering two
+      // connections to a 409 rolled the card back silently, so it looked like
+      // the drag had done nothing.
+      await fetch_();
+      setActionError(e?.message ? `Reorder failed: ${e.message}` : "Reorder failed");
+    }
   };
 
   const handleDelete = async (id) => {
@@ -425,25 +451,28 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       onConfirm: async () => {
         setConfirmState(null);
         try {
-          const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
-          if (res.ok) setConnections((prev) => prev.filter((c) => c.id !== id));
-        } catch (e) { console.log("delete error:", e); }
+          const res = await fetch(`/api/providers/${id}`, { method: "DELETE" }).then(expectOk);
+          setConnections((prev) => prev.filter((c) => c.id !== id));
+          setActionError("");
+        } catch (e) { setActionError(`Delete failed: ${e?.message || e}`); }
       }
     });
   };
 
   const handleToggleActive = async (id, isActive) => {
     try {
-      const res = await fetch(`/api/providers/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive }) });
-      if (res.ok) setConnections((prev) => prev.map((c) => c.id === id ? { ...c, isActive } : c));
-    } catch (e) { console.log("toggle error:", e); }
+      await fetch(`/api/providers/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive }) }).then(expectOk);
+      setConnections((prev) => prev.map((c) => c.id === id ? { ...c, isActive } : c));
+      setActionError("");
+    } catch (e) { setActionError(`Toggle failed: ${e?.message || e}`); }
   };
 
   const handleUpdateProxy = async (connId, proxyPoolId) => {
     try {
-      const res = await fetch(`/api/providers/${connId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proxyPoolId: proxyPoolId || null }) });
-      if (res.ok) setConnections((prev) => prev.map((c) => c.id === connId ? { ...c, providerSpecificData: { ...c.providerSpecificData, proxyPoolId: proxyPoolId || null } } : c));
-    } catch (e) { console.log("proxy error:", e); }
+      await fetch(`/api/providers/${connId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerSpecificData: { ...selectedConnection.providerSpecificData, proxyPoolId } }) }).then(expectOk);
+      setConnections((prev) => prev.map((c) => c.id === connId ? { ...c, providerSpecificData: { ...c.providerSpecificData, proxyPoolId } } : c));
+      setActionError("");
+    } catch (e) { setActionError(`Proxy change failed: ${e?.message || e}`); }
   };
 
   const handleResetAllStatus = async () => {
@@ -462,22 +491,26 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       setConnections((prev) =>
         prev.map((c) => ({ ...c, testStatus: "active", lastError: "", lastErrorAt: null }))
       );
-    } catch (e) { console.log("reset all status error:", e); }
+    } catch (e) { setActionError(`Could not reset the statuses: ${e?.message || e}`); }
     finally { setResettingAll(false); }
   };
 
   const handleSaveApiKey = async (formData) => {
     try {
-      const res = await fetch("/api/providers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: providerId, ...formData }) });
-      if (res.ok) { await fetch_(); setShowAddModal(false); }
-    } catch (e) { console.log("save apikey error:", e); }
+      await fetch("/api/providers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) }).then(expectOk);
+      await fetch_();
+      setShowAddModal(false);
+      setActionError("");
+    } catch (e) { setActionError(`Could not add the connection: ${e?.message || e}`); }
   };
 
   const handleUpdateConnection = async (formData) => {
     try {
-      const res = await fetch(`/api/providers/${selectedConnection.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) });
-      if (res.ok) { await fetch_(); setShowEditModal(false); }
-    } catch (e) { console.log("update connection error:", e); }
+      await fetch(`/api/providers/${selectedConnection.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) }).then(expectOk);
+      await fetch_();
+      setShowEditModal(false);
+      setActionError("");
+    } catch (e) { setActionError(`Could not save the connection: ${e?.message || e}`); }
   };
 
   if (loading) return <Card><div className="h-20 animate-pulse bg-black/5 rounded-lg" /></Card>;
@@ -487,6 +520,12 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   return (
     <>
       <Card>
+        {actionError && (
+          <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 flex items-start gap-2">
+            <span className="material-symbols-outlined text-[16px] text-red-500 shrink-0 mt-px">error</span>
+            <p className="text-xs text-red-400 break-words">{actionError}</p>
+          </div>
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h2 className="text-lg font-semibold">Connections</h2>
           <div className="flex flex-wrap items-center gap-2">

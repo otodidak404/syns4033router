@@ -5,6 +5,7 @@ import { Card, Button, Modal } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { expectOk } from "@/shared/utils/api";
 
 // ── ModelRow ───────────────────────────────────────────────────
 export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting }) {
@@ -116,6 +117,10 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const [testError, setTestError] = useState("");
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [connections, setConnections] = useState([]);
+  // Alias and custom-model writes checked res.ok and then said nothing when it was
+  // false, so adding a model the server refused looked exactly like a reload that
+  // changed nothing.
+  const [actionError, setActionError] = useState("");
 
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
@@ -141,45 +146,45 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const handleSetAlias = async (modelId, alias) => {
     const fullModel = `${providerAlias}/${modelId}`;
     try {
-      const res = await fetch("/api/models/alias", {
+      await fetch("/api/models/alias", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: fullModel, alias }),
-      });
-      if (res.ok) await fetchData();
-    } catch (e) { console.log("set alias error:", e); }
+      }).then(expectOk);
+      await fetchData();
+      setActionError("");
+    } catch (e) { setActionError(`Could not set the alias: ${e?.message || e}`); }
   };
 
   const handleDeleteAlias = async (alias) => {
     try {
-      const res = await fetch(`/api/models/alias?alias=${encodeURIComponent(alias)}`, { method: "DELETE" });
-      if (res.ok) await fetchData();
-    } catch (e) { console.log("delete alias error:", e); }
+      await fetch(`/api/models/alias?alias=${encodeURIComponent(alias)}`, { method: "DELETE" }).then(expectOk);
+      await fetchData();
+      setActionError("");
+    } catch (e) { setActionError(`Could not remove the alias: ${e?.message || e}`); }
   };
 
   const handleAddCustomModel = async (modelId) => {
     try {
-      const res = await fetch("/api/models/custom", {
+      await fetch("/api/models/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerAlias, id: modelId, type: effectiveType }),
-      });
-      if (res.ok) {
-        await fetchData();
-        window.dispatchEvent(new CustomEvent("customModelChanged"));
-      }
-    } catch (e) { console.log("add custom model error:", e); }
+      }).then(expectOk);
+      await fetchData();
+      window.dispatchEvent(new CustomEvent("customModelChanged"));
+      setActionError("");
+    } catch (e) { setActionError(`Could not add the model: ${e?.message || e}`); }
   };
 
   const handleDeleteCustomModel = async (modelId) => {
     try {
       const params = new URLSearchParams({ providerAlias, id: modelId, type: effectiveType });
-      const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
-      if (res.ok) {
-        await fetchData();
-        window.dispatchEvent(new CustomEvent("customModelChanged"));
-      }
-    } catch (e) { console.log("delete custom model error:", e); }
+      await fetch(`/api/models/custom?${params}`, { method: "DELETE" }).then(expectOk);
+      await fetchData();
+      window.dispatchEvent(new CustomEvent("customModelChanged"));
+      setActionError("");
+    } catch (e) { setActionError(`Could not remove the model: ${e?.message || e}`); }
   };
 
   const handleTestModel = async (modelId) => {
@@ -191,7 +196,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: `${providerAlias}/${modelId}`, kind: kindFilter }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
       setTestError(data.ok ? "" : (data.error || "Model not reachable"));
     } catch {
@@ -221,6 +226,12 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   return (
     <>
       <Card>
+        {actionError && (
+          <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 flex items-start gap-2">
+            <span className="material-symbols-outlined text-[16px] text-red-500 shrink-0 mt-px">error</span>
+            <p className="text-xs text-red-400 break-words">{actionError}</p>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
         </div>

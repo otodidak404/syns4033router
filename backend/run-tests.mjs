@@ -49,6 +49,8 @@ const SUITES = [
       ["test-unbound-identifiers.mjs", false],
       // swaps globalThis.fetch, so it must run in its own process
       ["test-stt-flow.mjs", true],
+      // reads the media-provider frontend components from disk; no alias loader
+      ["test-media-shared-cards.mjs", false],
     ];
 
 let failed = 0;

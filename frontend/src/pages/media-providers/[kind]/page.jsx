@@ -19,7 +19,7 @@ function getEffectiveStatus(conn) {
   return conn.testStatus === "unavailable" && !isCooldown ? "active" : conn.testStatus;
 }
 
-function MediaProviderCard({ provider, kind, connections, isCustom, onToggle }) {
+function MediaProviderCard({ provider, kind, connections, isCustom, onToggle, connectionsLoaded }) {
   const providerInfo = AI_PROVIDERS[provider.id];
   const isNoAuth = !!providerInfo?.noAuth;
 
@@ -32,10 +32,19 @@ function MediaProviderCard({ provider, kind, connections, isCustom, onToggle }) 
   const handleToggleClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    // Nothing was loaded, so there is nothing to toggle -- and writing on the
+    // strength of an empty list is how a burst toggle ends up disabling every
+    // connection the operator has.
+    if (connectionsLoaded === false) return;
     if (onToggle) onToggle(provider.id, allDisabled);
   };
 
   const renderStatus = () => {
+    // An empty list means two different things, and conflating them is how a
+    // backend outage looked like the operator's connections had been removed.
+    if (connectionsLoaded === false) {
+      return <span className="text-xs text-red-400">Status unknown</span>;
+    }
     if (isNoAuth) return <Badge variant="success" size="sm">Ready</Badge>;
     if (allDisabled) return <Badge variant="default" size="sm">Disabled</Badge>;
     if (total === 0) return <span className="text-xs text-text-muted">No connections</span>;
@@ -144,6 +153,11 @@ export default function MediaProviderKindPage() {
   const [customNodes, setCustomNodes] = useState([]);
   const [combos, setCombos] = useState([]);
   const [showAddCustomEmbedding, setShowAddCustomEmbedding] = useState(false);
+  // A failed read used to be swallowed by `.catch(() => {})`, and because every
+  // card derives its badge from `connections`, an empty list looked identical to
+  // "you have no connections" -- an outage read as if the operator's STT
+  // providers had been deleted.
+  const [loadErrors, setLoadErrors] = useState([]);
 
   // webSearch/webFetch listing pages are merged into /web
   useEffect(() => {
@@ -158,22 +172,38 @@ export default function MediaProviderKindPage() {
 
   useEffect(() => {
     if (!kindConfig) return;
-    fetch("/api/providers", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setConnections(d.connections || []))
-      .catch(() => {});
-    if (isEmbedding) {
-      fetch("/api/provider-nodes", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => setCustomNodes((d.nodes || []).filter((n) => n.type === "custom-embedding")))
-        .catch(() => {});
-    }
-    if (supportsCombo) {
-      fetch("/api/combos", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => setCombos(d.combos || []))
-        .catch(() => {});
-    }
+    let cancelled = false;
+    const failed = [];
+    // expectOk is defined below the fetch chain for readability; here the status
+    // is read inline so a 500 is as visible as a network error.
+    const readJson = async (url, onOk, label) => {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error || `HTTP ${res.status}`);
+        }
+        onOk(await res.json());
+      } catch (e) {
+        if (!cancelled) failed.push(`${label}: ${e?.message || e}`);
+      }
+    };
+
+    (async () => {
+      await readJson("/api/providers",
+        (d) => setConnections(d.connections || []), "connections");
+      if (isEmbedding) {
+        await readJson("/api/provider-nodes",
+          (d) => setCustomNodes((d.nodes || []).filter((n) => n.type === "custom-embedding")),
+          "custom nodes");
+      }
+      if (supportsCombo) {
+        await readJson("/api/combos", (d) => setCombos(d.combos || []), "combos");
+      }
+      if (!cancelled) setLoadErrors(failed);
+    })();
+
+    return () => { cancelled = true; };
   }, [isEmbedding, supportsCombo, kindConfig]);
 
   if (!kindConfig) return null; // notFound removed
@@ -248,6 +278,20 @@ export default function MediaProviderKindPage() {
         </div>
       )}
 
+      {loadErrors.length > 0 && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3">
+          <p className="text-sm font-medium text-red-500">
+            Could not load {loadErrors.length} list{loadErrors.length > 1 ? "s" : ""}. The
+            page below is incomplete -- it is not showing your saved configuration.
+          </p>
+          <ul className="mt-1.5 space-y-0.5">
+            {loadErrors.map((e) => (
+              <li key={e} className="text-xs text-red-400 font-mono break-words">{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {supportsCombo && kindCombos.length > 0 && (
         <ComboList combos={kindCombos} />
       )}
@@ -264,6 +308,7 @@ export default function MediaProviderKindPage() {
               provider={provider}
               kind={kind}
               connections={connections}
+              connectionsLoaded={!loadErrors.some((e) => e.startsWith("connections"))}
               onToggle={handleToggleProvider}
             />
           ))}
