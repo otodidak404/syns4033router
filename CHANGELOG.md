@@ -1526,6 +1526,27 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### Production would not start: a new module was imported without its extension
+
+`automation/ammail/route.ts` imported the new `lib/net/publicUrl` as
+`"../../../lib/net/publicUrl"`. Node's ESM resolver requires the extension, so on the
+container the route file failed to import and `buildAutoRouter` aborted:
+
+```
+Failed to import 1 route file(s):
+automation/ammail/route.js: Cannot find module '/app/backend/dist/lib/net/publicUrl'
+```
+
+The service then crash-looped and every endpoint, `/api/health` included, answered 502.
+
+This did not show up locally because `npm run test` and `npm run typecheck` both go
+through `bin/alias-loader.mjs`, which resolves extensionless specifiers; the server's
+dynamic route import does not. Every other relative import in `src/routes` carries its
+extension, which is what made this one an outlier.
+
+The import is `"../../../lib/net/publicUrl.js"`, and the built route module now imports
+cleanly from `dist` the way `buildAutoRouter` loads it.
+
 ### The playground could drop the leg under test without saying so
 
 `resolvePrompt` returns `null` for an `entryId` that no longer resolves — the entry was

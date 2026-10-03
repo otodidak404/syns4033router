@@ -3,7 +3,7 @@ import { getSettings, updateSettings } from "../../../lib/localDb.js";
 import { getAmmailClientFromSettings } from "../../../lib/automation/ammailClient.js";
 import { listAmmailOtps, deleteAmmailOtpsBulk } from "../../../lib/db/index.js";
 import crypto from "crypto";
-import { displayBaseUrl, registrationBaseUrl } from "../../../lib/net/publicUrl";
+import { displayBaseUrl, registrationBaseUrl } from "../../../lib/net/publicUrl.js";
 import fs from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
