@@ -18,10 +18,12 @@ export default function AddCustomEmbeddingModal({ isOpen, onClose, onCreated, on
   const [checkModelId, setCheckModelId] = useState("");
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     if (!isOpen) return;
     setValidationResult(null);
+    setSaveError("");
     setCheckKey("");
     setCheckModelId("");
     if (isEdit) {
@@ -38,6 +40,7 @@ export default function AddCustomEmbeddingModal({ isOpen, onClose, onCreated, on
   const handleSubmit = async () => {
     if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
     setSubmitting(true);
+    setSaveError("");
     try {
       const url = isEdit ? `/api/provider-nodes/${node.id}` : "/api/provider-nodes";
       const method = isEdit ? "PUT" : "POST";
@@ -53,13 +56,18 @@ export default function AddCustomEmbeddingModal({ isOpen, onClose, onCreated, on
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         if (isEdit) onSaved?.(data.node);
         else onCreated?.(data.node);
+        return;
       }
+      // A rejected prefix collision or a blocked base URL came back here and
+      // was dropped on the floor: the modal just stopped submitting with nothing
+      // on screen to say why.
+      setSaveError(data?.error || `Save failed (HTTP ${res.status})`);
     } catch (error) {
-      console.log("Error saving custom embedding node:", error);
+      setSaveError(error.message || "Network error");
     } finally {
       setSubmitting(false);
     }
@@ -78,7 +86,11 @@ export default function AddCustomEmbeddingModal({ isOpen, onClose, onCreated, on
           modelId: checkModelId.trim() || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setValidationResult({ valid: false, error: data?.error || `Check failed (HTTP ${res.status})` });
+        return;
+      }
       setValidationResult(data);
     } catch {
       setValidationResult({ valid: false, error: "Network error" });
@@ -153,6 +165,7 @@ export default function AddCustomEmbeddingModal({ isOpen, onClose, onCreated, on
           </Button>
           {renderValidationResult()}
         </div>
+        {saveError && <div className="text-xs text-red-500 break-words">{saveError}</div>}
         <div className="flex gap-2">
           <Button
             onClick={handleSubmit}

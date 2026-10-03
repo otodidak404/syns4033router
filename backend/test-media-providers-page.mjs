@@ -23,6 +23,10 @@ const LIST = path.join(PAGE, "[kind]", "page.jsx");
 const SETTINGS_REPO = path.join(HERE, "src", "lib", "db", "repos", "settingsRepo.js");
 const PROVIDER_CONSTANTS = path.join(HERE, "..", "frontend", "src", "shared", "constants", "providers.js");
 const CATALOG = path.join(HERE, "..", "backend", "open-sse", "config", "providerModels.js");
+const NODE_ROUTE = path.join(HERE, "src", "routes", "provider-nodes", "route.ts");
+const NODE_ID_ROUTE = path.join(HERE, "src", "routes", "provider-nodes", "[id]", "route.ts");
+const MODEL_SERVICE = path.join(HERE, "src", "sse", "services", "model.js");
+const MODAL = path.join(HERE, "..", "frontend", "src", "shared", "components", "AddCustomEmbeddingModal.jsx");
 
 let pass = 0;
 const pending = [];
@@ -191,6 +195,65 @@ t("an unserved kind explains itself instead of showing a dead form", () => {
   for (const k of unserved) {
     assert.ok(!list[1].includes(`"${k}"`), `the sidebar still links to the unserved kind ${k}`);
   }
+});
+
+t("a provider-node prefix is unique on create and on edit", () => {
+  // Resolution is `nodes.find(n => n.prefix === alias)` -- first match wins -- so
+  // a duplicate left the second node permanently unreachable while the error
+  // named an opaque node id. Three nodes sharing one prefix were accepted live.
+  const create = fs.readFileSync(NODE_ROUTE, "utf8");
+  const edit = fs.readFileSync(NODE_ID_ROUTE, "utf8");
+  for (const [label, src] of [["create", create], ["edit", edit]]) {
+    assert.ok(/already used by/.test(src), `${label} does not report a prefix collision`);
+    assert.ok(/409/.test(src), `${label} does not answer 409 on a prefix collision`);
+  }
+  // Both branches of create must be covered, not just the one that happened to be used.
+  assert.equal((create.match(/await assertNodeIsUsable\(/g) || []).length, 3,
+    "create leaves a node type without the prefix/URL guard");
+  assert.ok(/trimmedPrefix !== node\.prefix/.test(edit),
+    "edit re-checks the prefix even when it was not changed");
+  assert.ok(fs.readFileSync(MODEL_SERVICE, "utf8").includes("node.prefix === parsed.providerAlias"),
+    "resolution no longer matches on prefix; re-check the uniqueness requirement");
+});
+
+t("the base URL guard covers the path that stores it, not only the one that tests it", () => {
+  // /provider-nodes/validate applied checkFetchableUrl to the identical input
+  // that POST /provider-nodes stored unchecked: a loopback baseUrl was accepted
+  // with 201 while validate answered 403 for the same string.
+  const create = fs.readFileSync(NODE_ROUTE, "utf8");
+  const edit = fs.readFileSync(NODE_ID_ROUTE, "utf8");
+  assert.ok(create.includes("checkFetchableUrl"), "create does not guard the base URL");
+  assert.ok(edit.includes("checkFetchableUrl"), "edit does not guard the base URL");
+  assert.ok(/checkFetchableUrl\(baseUrl\)/.test(create), "create checks something other than the stored baseUrl");
+  assert.ok(/sanitizedBaseUrl !== node\.baseUrl/.test(edit),
+    "edit guards unconditionally, re-fetching the URL on every unrelated edit");
+});
+
+t("the custom embedding modal reports a rejected save", () => {
+  const modal = fs.readFileSync(MODAL, "utf8");
+  const submit = modal.slice(modal.indexOf("const handleSubmit"), modal.indexOf("const handleValidate"));
+  assert.ok(/if \(res\.ok\)/.test(submit), "submit lost its ok branch");
+  // The ok branch returns early, so the code that reports a rejection is what
+  // follows it. Scope to that slice: setSaveError also appears in the state
+  // declaration, the reset and the catch block, so matching the name anywhere in
+  // submit passes even when the rejected-response path is empty.
+  const okAt = submit.indexOf("if (res.ok)");
+  const failPath = submit.slice(submit.indexOf("}", submit.indexOf("return;", okAt)) + 1,
+                                submit.indexOf("} catch (error)"));
+  assert.ok(failPath.length > 0, "no code follows the early return");
+  assert.ok(/setSaveError\(/.test(failPath),
+    "the rejected-response path does not report the failure");
+  // Without the early return the success path falls through and reports a
+  // failure for a node that was created fine.
+  const okBranch = submit.slice(okAt, submit.indexOf("}", submit.indexOf("return;", okAt)));
+  assert.ok(/return;/.test(okBranch), "the ok branch no longer returns early");
+  assert.ok(/const \[saveError, setSaveError\] = useState/.test(modal),
+    "saveError is referenced but never declared");
+  assert.ok(!/console\.log\("Error saving custom embedding node/.test(modal),
+    "the save error is back in the console instead of the modal");
+  assert.ok(/\{saveError &&/.test(modal), "saveError is never rendered");
+  const validate = modal.slice(modal.indexOf("const handleValidate"), modal.indexOf("const renderValidationResult"));
+  assert.ok(/if \(!res\.ok\)/.test(validate), "validate still renders a 500 body as a verdict");
 });
 
 Promise.all(pending).then(() =>

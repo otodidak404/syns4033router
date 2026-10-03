@@ -1,5 +1,6 @@
 
-import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "../../../models/index.js";
+import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "../../../models/index.js";
+import { checkFetchableUrl } from "../../../lib/net/ssrf.js";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT_handler(req, res, { params }) {
@@ -48,9 +49,26 @@ export async function PUT_handler(req, res, { params }) {
       }
     }
 
+    // Editing can collide just as easily as creating: the prefix is the model
+    // id namespace and resolution takes the first match, so a second node on the
+    // same prefix would be silently unreachable.
+    const trimmedPrefix = prefix.trim();
+    if (trimmedPrefix !== node.prefix) {
+      const clash = (await getProviderNodes()).find((n) => n.prefix === trimmedPrefix);
+      if (clash) {
+        return res.status(409).json({ error: `Prefix "${trimmedPrefix}" is already used by "${clash.name}"` });
+      }
+    }
+    if (sanitizedBaseUrl !== node.baseUrl) {
+      const reachable = await checkFetchableUrl(sanitizedBaseUrl);
+      if (!reachable.ok) {
+        return res.status(403).json({ error: `Base URL rejected: ${reachable.error}` });
+      }
+    }
+
     const updates = {
       name: name.trim(),
-      prefix: prefix.trim(),
+      prefix: trimmedPrefix,
       baseUrl: sanitizedBaseUrl,
     };
 
@@ -65,7 +83,7 @@ export async function PUT_handler(req, res, { params }) {
       updateProviderConnection(connection.id, {
         providerSpecificData: {
           ...(connection.providerSpecificData || {}),
-          prefix: prefix.trim(),
+          prefix: trimmedPrefix,
           apiType: node.type === "openai-compatible" ? apiType : undefined,
           baseUrl: sanitizedBaseUrl,
           nodeName: updated.name,

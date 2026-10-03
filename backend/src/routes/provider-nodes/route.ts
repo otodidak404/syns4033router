@@ -2,6 +2,7 @@
 import { createProviderNode, getProviderNodes } from "../../models/index.js";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "../../shared/constants/providers.js";
 import { generateId } from "../../shared/utils/index.js";
+import { checkFetchableUrl } from "../../lib/net/ssrf.js";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,27 @@ export async function GET(req, res) {
 }
 
 // POST /api/provider-nodes - Create provider node
+// The prefix is the model id namespace — `prefix/model` resolves through
+// `nodes.find(n => n.prefix === alias)`, which takes the first match. Two nodes
+// sharing a prefix therefore left the second permanently unreachable, and the
+// error the operator saw named an opaque node id with no hint that a duplicate
+// existed. The baseUrl is the other half: it is accepted here without the
+// checkFetchableUrl guard that /validate applies to the identical input.
+async function assertNodeIsUsable(prefix, baseUrl) {
+  const existing = (await getProviderNodes()).find((n) => n.prefix === prefix);
+  if (existing) {
+    const err = new Error(`Prefix "${prefix}" is already used by "${existing.name}"`);
+    err.status = 409;
+    throw err;
+  }
+  const reachable = await checkFetchableUrl(baseUrl);
+  if (!reachable.ok) {
+    const err = new Error(`Base URL rejected: ${reachable.error}`);
+    err.status = 403;
+    throw err;
+  }
+}
+
 export async function POST_handler(req, res) {
   try {
     const body = req.body;
@@ -50,6 +72,7 @@ export async function POST_handler(req, res) {
         return res.status(400).json({ error: "Invalid OpenAI compatible API type" });
       }
 
+      await assertNodeIsUsable(prefix.trim(), (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim());
       const node = await createProviderNode({
         id: `${OPENAI_COMPATIBLE_PREFIX}${apiType}-${generateId()}`,
         type: "openai-compatible",
@@ -68,6 +91,7 @@ export async function POST_handler(req, res) {
         sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -"/embeddings".length);
       }
 
+      await assertNodeIsUsable(prefix.trim(), sanitizedBaseUrl);
       const node = await createProviderNode({
         id: `${CUSTOM_EMBEDDING_PREFIX}${generateId()}`,
         type: "custom-embedding",
@@ -86,6 +110,7 @@ export async function POST_handler(req, res) {
         sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
       }
 
+      await assertNodeIsUsable(prefix.trim(), sanitizedBaseUrl);
       const node = await createProviderNode({
         id: `${ANTHROPIC_COMPATIBLE_PREFIX}${generateId()}`,
         type: "anthropic-compatible",
@@ -98,6 +123,9 @@ export async function POST_handler(req, res) {
 
     return res.status(400).json({ error: "Invalid provider node type" });
   } catch (error) {
+    if (error?.status) {
+      return res.status(error.status).json({ error: error.message });
+    }
     console.log("Error creating provider node:", error);
     return res.status(500).json({ error: "Failed to create provider node" });
   }

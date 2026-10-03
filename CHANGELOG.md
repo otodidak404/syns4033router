@@ -3,6 +3,52 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/media-providers/embedding` — three nodes could share one prefix, and two of them were unreachable
+
+Probing the custom-embedding flow live rather than reading it found what reading
+missed. `sse/services/model.js` resolves a model id with
+`nodes.find(n => n.prefix === alias)` — first match wins — and nothing enforced
+uniqueness:
+
+```
+POST /api/provider-nodes  prefix="dupe"  → 201   (three times, three different baseUrls)
+POST /v1/embeddings  model=shadow/first  → 400  No credentials for provider: custom-embedding-…9dce956b832f
+POST /v1/embeddings  model=shadow/second → 400  No credentials for provider: custom-embedding-…9dce956b832f
+```
+
+Both ids resolved to the same node. The second was permanently unreachable, and
+the error named an opaque node id with no hint that a duplicate existed. Create
+and edit now reject a taken prefix with 409 and name the node holding it.
+
+The same probe found the SSRF guard sitting one hop short of where the URL is
+used. `/provider-nodes/validate` applied `checkFetchableUrl` to the identical
+input that `POST /provider-nodes` stored unchecked:
+
+```
+POST /provider-nodes          baseUrl=http://127.0.0.1:3001  → 201 stored
+POST /provider-nodes/validate baseUrl=http://127.0.0.1:3001  → 403 not a public address
+```
+
+The modal lets an operator press Create without ever pressing Check, so the
+guard was advisory. Create and edit now apply the same check, and edit only
+re-checks when the URL actually changed.
+
+What I did **not** prove: whether a loopback node can be driven end to end to
+steal a response. Execution stops earlier — `No credentials for provider` — and
+the runtime base URL comes from `creds.providerSpecificData.baseUrl`, set through
+the connection flow, which I did not trace to completion. The fix closes the
+asymmetry on the input; it is not a claim that a full SSRF chain was demonstrated.
+
+The modal was silent on top of that: `if (res.ok)` with no else, and the catch
+went to `console.log`. A 409 or 403 came back and the form simply stopped
+submitting with nothing on screen. It now renders the server's message, and
+`handleValidate` checks the response status instead of rendering a 500 body as a
+verdict.
+
+Five more assertions in `test-media-providers-page.mjs`, fifteen mutations caught
+in total across the file.
+
+
 ### `/dashboard/media-providers` — two kinds pointed at endpoints the router never had
 
 Asked a second time whether the page was done. The first pass audited handlers;
@@ -786,7 +832,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 331 assertions, 32 suites, all passed |
+| `npm run test` | 334 assertions, 32 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |
