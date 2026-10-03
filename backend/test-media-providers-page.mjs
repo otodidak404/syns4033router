@@ -13,7 +13,7 @@
 import assert from "assert";
 import fs from "node:fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PAGE = path.join(HERE, "..", "frontend", "src", "pages", "media-providers");
@@ -21,6 +21,8 @@ const DETAIL = path.join(PAGE, "[kind]", "[id]", "page.jsx");
 const COMBO = path.join(PAGE, "combo", "[id]", "page.jsx");
 const LIST = path.join(PAGE, "[kind]", "page.jsx");
 const SETTINGS_REPO = path.join(HERE, "src", "lib", "db", "repos", "settingsRepo.js");
+const PROVIDER_CONSTANTS = path.join(HERE, "..", "frontend", "src", "shared", "constants", "providers.js");
+const CATALOG = path.join(HERE, "..", "backend", "open-sse", "config", "providerModels.js");
 
 let pass = 0;
 const pending = [];
@@ -34,6 +36,7 @@ const detail = fs.readFileSync(DETAIL, "utf8");
 const combo = fs.readFileSync(COMBO, "utf8");
 const list = fs.readFileSync(LIST, "utf8");
 const settingsRepo = fs.readFileSync(SETTINGS_REPO, "utf8");
+const constants = fs.readFileSync(PROVIDER_CONSTANTS, "utf8");
 
 /** The body of one named function, brace-matched. */
 function fn(src, name) {
@@ -129,6 +132,64 @@ t("every writer on the page still checks its response", () => {
       assert.ok(/!\s*res\.ok|res\.ok|expectOk|res\.status/.test(tail),
         `a write in media-providers has no response check: ${m[1].slice(0, 70).replace(/\s+/g, " ")}`);
     }
+  }
+});
+
+t("every kind the sidebar offers has a route the router serves", async () => {
+  // imageToText and music declare /v1/images/understanding and /v1/audio/music.
+  // Neither has a route or a handler -- both answer 404 -- and the catalog has
+  // no models of either type, so their detail pages offered a form that could
+  // only fail. They are flagged served: false and the page says so.
+  const routes = new Set();
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name === "route.ts") {
+        const rel = path.relative(path.join(HERE, "src", "routes"), p).split(path.sep).join("/");
+        routes.add(("/api/" + rel.replace(/route\.ts$/, "")).replace(/\/+$/, ""));
+      }
+    }
+  })(path.join(HERE, "src", "routes"));
+
+  const { PROVIDER_MODELS } = await import(pathToFileURL(CATALOG).href);
+  const declaredTypes = new Set(Object.values(PROVIDER_MODELS).flat().map((m) => m.type));
+
+  // One entry per line in MEDIA_PROVIDER_KINDS; `[^}]*` cannot span the
+  // nested endpoint object, so parse line by line rather than across entries.
+  const kinds = constants.split("\n")
+    .filter((l) => /endpoint: \{ method:/.test(l))
+    .map((l) => ({
+      id: /id: "(\w+)"/.exec(l)?.[1],
+      path: /path: "([^"]+)"/.exec(l)?.[1],
+      served: !/served: false/.test(l),
+    }));
+
+  assert.ok(kinds.length >= 9, `only ${kinds.length} kinds parsed from the constants`);
+
+  for (const k of kinds) {
+    const served = routes.has("/api" + k.path);
+    const hasModels = declaredTypes.has(k.id) || !["image", "video", "music", "imageToText"].includes(k.id);
+    if (k.served) {
+      assert.ok(served, `${k.id} is offered but /api${k.path} has no route`);
+    } else {
+      assert.ok(!served, `${k.id} is marked unserved but /api${k.path} exists -- drop the flag`);
+      assert.ok(!declaredTypes.has(k.id), `${k.id} is marked unserved but the catalog has models of that type`);
+    }
+  }
+});
+
+t("an unserved kind explains itself instead of showing a dead form", () => {
+  const guard = detail.match(/kindConfig\.served === false[\s\S]{0,400}?\);/);
+  assert.ok(guard, "the detail page has no guard for an unserved kind");
+  assert.ok(/no route/.test(guard[0]), "the guard does not say what is missing");
+  // And nothing may be flagged unserved while the sidebar still links to it.
+  const sidebar = fs.readFileSync(path.join(HERE, "..", "frontend", "src", "shared", "components", "Sidebar.jsx"), "utf8");
+  const list = /const VISIBLE_MEDIA_KINDS = \[([^\]]*)\]/.exec(sidebar);
+  assert.ok(list, "VISIBLE_MEDIA_KINDS is gone from the sidebar");
+  const unserved = [...constants.matchAll(/id: "(\w+)"[^}]*served: false/g)].map((m) => m[1]);
+  for (const k of unserved) {
+    assert.ok(!list[1].includes(`"${k}"`), `the sidebar still links to the unserved kind ${k}`);
   }
 });
 

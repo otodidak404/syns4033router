@@ -3,6 +3,46 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/media-providers` — two kinds pointed at endpoints the router never had
+
+Asked a second time whether the page was done. The first pass audited handlers;
+it never checked the contract those handlers depend on. Doing that surfaced a
+kind that could only fail:
+
+```
+imageToText → POST /api/v1/images/understanding   404   no route, no handler
+music       → POST /api/v1/audio/music             404   no route, no handler
+```
+
+Both were declared in the initial commit and never implemented. `imageToText` is
+claimed by eleven providers in `serviceKinds` (ollama, xai, anthropic, mistral,
+azure, huggingface, minimax, cursor, alicode, gitlab, deepgram), the sidebar
+already hid both kinds, and the catalog has no models of either type — so the
+detail pages were reachable by URL and offered a form whose Run button could
+only produce a 404. `MEDIA_PROVIDER_KINDS` now marks both `served: false` and
+the detail page says which path is missing instead of rendering a dead form.
+
+Twelve errors of my own while establishing this, recorded because the pattern
+kept recurring:
+
+- Enumerated the page's endpoints against route directories and reported all
+  seventeen missing. `/api` is a mount prefix in `server.ts`, not a directory.
+- Reported the model lists as rendering empty from `MODEL_DATA = null`. A real
+  browser shows all twenty populated.
+- Reported three functions as dead; they are called from `onclick` attributes.
+- **Fixed the sidebar, which did not need fixing.** `VISIBLE_MEDIA_KINDS` had
+  already been curated to `["embedding","image","tts","stt","video"]` with the
+  old list commented out. My edit would have re-added `webSearch`/`webFetch` as
+  duplicate links next to the combined `/web` entry. Reverted — `git checkout`
+  on that file. Only readable because I checked what HEAD already had before
+  assuming a defect.
+
+`test-media-providers-page.mjs` gained two assertions: every kind the sidebar
+offers must have a real route, and a kind flagged `served: false` must not have
+one and must not have catalog models — so the flag cannot go stale. Six
+mutations, all caught.
+
+
 ### `/dashboard/media-providers` — one failed GET erased every combo's round-robin strategy
 
 `combo/[id]` handleToggleRoundRobin read `/api/settings` and fell back to `{}` when
@@ -746,7 +786,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 329 assertions, 32 suites, all passed |
+| `npm run test` | 331 assertions, 32 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

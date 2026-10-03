@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useState, useEffect } from "react";
 import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProviderAlias, isCustomEmbeddingProvider, resolveProviderId } from "@/shared/constants/providers";
+import {MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProviderAlias, isCustomEmbeddingProvider, resolveProviderId } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import ConnectionsCard from "@/pages/providers/components/ConnectionsCard";
@@ -1854,6 +1854,20 @@ export default function MediaProviderDetailPage() {
     : builtInProvider;
 
   if (!isCustom && !builtInProvider) return null; // notFound removed
+
+  // The kind is defined but the router serves no route for it — a Test form
+  // here can only ever answer 404. Say so rather than letting the operator
+  // type a model id and wait for a failure.
+  if (kindConfig.served === false) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-sm text-text-muted">
+          {kindConfig.label} is not available on this router —{" "}
+          <code className="text-xs">{kindConfig.endpoint.path}</code> has no route.
+        </p>
+      </div>
+    );
+  }
   if (isCustom && !customLoading && !customNode) return null; // notFound removed
   if (isCustom && customLoading) {
     return <div className="text-text-muted text-sm py-12 text-center">Loading...</div>;
