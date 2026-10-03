@@ -21,6 +21,8 @@ const SUITES = [
   ["test-api-key-gate.mjs", true],
   ["test-api-key-rehash.mjs", true],
   ["test-route-imports.mjs", false],
+  // needs the alias loader: it imports the compiled route modules the way the server does
+  ["test-dist-imports-resolve.mjs", true],
   ["test-ssrf-guard.mjs", true],
   ["test-playground-extract.mjs", false],
   ["test-playground-target-model.mjs", false],

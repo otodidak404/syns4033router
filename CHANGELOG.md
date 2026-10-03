@@ -1524,7 +1524,20 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ---
 
-## Fixed
+### Catch an import that stops the server, before it ships
+
+- `backend/test-dist-imports-resolve.mjs` (4 assertions) walks every compiled module
+  under `dist/routes` and requires each relative specifier to carry an extension that
+  Node can resolve — an alias is fine, an extensionless relative import is not, and only
+  the compiled output shows which is which. It imports the route that broke, and checks
+  the module is present in `dist` and named with its extension. Two mutation controls,
+  each rebuilding the backend before the run: dropping the `.js` from the ammail import,
+  and removing `publicUrl.js` from `src` entirely.
+
+  It runs under `bin/alias-loader.mjs`, like the server does, because the loader resolves
+  `@/...` and nothing else. It deliberately does not import every route module: route
+  modules open the database and start things at import time, so a bulk import hangs
+  rather than fails, and that is how this suite first timed out.
 
 ### Production would not start: a new module was imported without its extension
 
