@@ -50,6 +50,7 @@ export default function ProxyPoolsPage() {
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0 });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const relayMenuRef = useRef(null);
   const notify = useNotificationStore();
 
@@ -66,14 +67,24 @@ export default function ProxyPoolsPage() {
   }, [showRelayMenu]);
 
   const fetchProxyPools = useCallback(async () => {
+    // A failed load used to leave the list empty and say nothing, which reads as
+    // "you have no proxy pools" rather than "the request failed".
     try {
       const res = await fetch("/api/proxy-pools?includeUsage=true", { cache: "no-store" });
-      const data = await res.json();
-      if (res.ok) {
-        setProxyPools(data.proxyPools || []);
+      if (!res.ok) {
+        setLoadError(`Could not load proxy pools (HTTP ${res.status}).`);
+        return;
       }
+      const raw = await res.text();
+      let data = null;
+      try { data = JSON.parse(raw); } catch {
+        setLoadError("The server returned something that is not a proxy pool list.");
+        return;
+      }
+      setProxyPools(data.proxyPools || []);
+      setLoadError(null);
     } catch (error) {
-      console.log("Error fetching proxy pools:", error);
+      setLoadError(`Could not reach the server: ${error?.message || error}`);
     } finally {
       setLoading(false);
     }
@@ -129,11 +140,18 @@ export default function ProxyPoolsPage() {
         closeFormModal();
         notify.success(editingProxyPool ? "Proxy pool updated" : "Proxy pool created");
       } else {
-        const data = await res.json();
-        notify.error(data.error || "Failed to save proxy pool");
+        // A proxy answering 502 with HTML made res.json() throw inside the error
+        // branch, so the operator saw a console line and no message at all.
+        const raw = await res.text();
+        let message = `Failed to save proxy pool (HTTP ${res.status})`;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed?.error) message = parsed.error;
+        } catch { /* not JSON, keep the status-based message */ }
+        notify.error(message);
       }
     } catch (error) {
-      console.log("Error saving proxy pool:", error);
+      notify.error(`Failed to save proxy pool: ${error?.message || error}`);
     } finally {
       setSaving(false);
     }
@@ -270,7 +288,14 @@ export default function ProxyPoolsPage() {
     if (targets.length === 0) return;
     setHealthChecking(true);
     setHealthProgress({ current: 0, total: targets.length });
-    let alive = 0; const deadIds = [];
+    // Three outcomes, not two. "The proxy answered and said it is dead" is not the
+    // same as "we could not ask". The old code folded a thrown JSON parse, a 401
+    // from an expired session and a refused connection all into one `deadIds`, then
+    // offered to disable them: an expired session marked every proxy dead and
+    // disabling them would have taken working proxies out of rotation.
+    let alive = 0;
+    const deadIds = [];
+    const unknownIds = [];
     let done = 0;
     const CONCURRENCY = 10;
     const queue = [...targets];
@@ -281,10 +306,21 @@ export default function ProxyPoolsPage() {
         if (!pool) break;
         try {
           const res = await fetch(`/api/proxy-pools/${pool.id}/test`, { method: "POST" });
-          const data = await res.json();
-          if (res.ok && data.ok) alive += 1; else deadIds.push(pool.id);
+          // A proxy in front can answer with HTML; parsing that throws and used to
+          // land in the catch below, which read as "dead".
+          const raw = await res.text();
+          let data = null;
+          try { data = JSON.parse(raw); } catch { data = null; }
+          if (!res.ok) {
+            // 401/403/5xx: we never learned anything about the proxy.
+            unknownIds.push(pool.id);
+          } else if (data && data.ok === true) {
+            alive += 1;
+          } else {
+            deadIds.push(pool.id);
+          }
         } catch {
-          deadIds.push(pool.id);
+          unknownIds.push(pool.id);
         } finally {
           done += 1;
           setHealthProgress({ current: done, total: targets.length });
@@ -300,27 +336,47 @@ export default function ProxyPoolsPage() {
     if (deadIds.length > 0) {
       setConfirmState({
         title: "Disable Dead Proxies",
-        message: `Alive: ${alive}, Dead: ${deadIds.length}.\n\nDisable ${deadIds.length} dead proxies?`,
+        message: unknownIds.length > 0
+          ? `Alive: ${alive}, Dead: ${deadIds.length}, Could not check: ${unknownIds.length}.\n\nDisable the ${deadIds.length} confirmed dead proxies? The ones that could not be checked are left alone.`
+          : `Alive: ${alive}, Dead: ${deadIds.length}.\n\nDisable ${deadIds.length} dead proxies?`,
         onConfirm: async () => {
           setConfirmState(null);
           setBulkBusy(true);
+          // Count what actually happened. This used to ignore res.ok entirely and
+          // swallow network errors, then report success for every id regardless.
+          let disabled = 0;
+          const failedIds = [];
           try {
             for (const id of deadIds) {
               try {
-                await fetch(`/api/proxy-pools/${id}`, {
+                const res = await fetch(`/api/proxy-pools/${id}`, {
                   method: "PUT",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ isActive: false }),
                 });
-              } catch {}
+                if (res.ok) disabled += 1;
+                else failedIds.push(id);
+              } catch {
+                failedIds.push(id);
+              }
             }
             await fetchProxyPools();
-            notify.success(`Disabled ${deadIds.length} dead proxies`);
+            if (failedIds.length > 0) {
+              notify.error(
+                `Disabled ${disabled} of ${deadIds.length}. ${failedIds.length} could not be saved: ${failedIds.join(", ")}`,
+              );
+            } else {
+              notify.success(`Disabled ${disabled} dead proxies`);
+            }
           } finally {
             setBulkBusy(false);
           }
         }
       });
+    } else if (unknownIds.length > 0) {
+      notify.warning(
+        `Health check done. Alive: ${alive}, Dead: ${deadIds.length}, Could not check: ${unknownIds.length}`,
+      );
     } else {
       notify.success(`Health check done. Alive: ${alive}, Dead: ${deadIds.length}`);
     }
@@ -573,6 +629,15 @@ export default function ProxyPoolsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
+      {loadError && (
+        <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
+          <span className="material-symbols-outlined text-[18px] shrink-0">error</span>
+          <span className="flex-1">{loadError}</span>
+          <button type="button" onClick={() => { setLoadError(null); fetchProxyPools(); }}
+            className="material-symbols-outlined text-[16px] shrink-0 hover:opacity-70"
+            aria-label="Retry">refresh</button>
+        </div>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold sm:text-2xl">Proxy Pools</h1>

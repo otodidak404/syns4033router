@@ -1,3 +1,55 @@
+### An expired session would have disabled every working proxy
+
+`handleHealthCheck` folded three different outcomes into one `deadIds` bucket. A
+test response that a proxy answered with HTML made `res.json()` throw, and the
+catch pushed the id; a non-2xx — including the 401 an expired dashboard session
+produces — took the same branch; and a refused connection took it too. So the
+"dead" list was populated by anything other than a server verdict, and the dialog
+then offered to disable all of it. An expired session marked every proxy dead, and
+confirming would have taken working proxies out of production rotation.
+
+There are now three outcomes. A 2xx carrying `ok: true` is alive, a 2xx carrying
+`ok: false` is dead, and anything else is "could not check" — left alone, and named
+in the dialog and in the summary.
+
+### The disable loop reported success for writes that never happened
+
+The confirmation loop issued each `PUT` without checking `res.ok` and swallowed
+network errors in `catch {}`, then called
+`notify.success("Disabled ${deadIds.length} dead proxies")`. A 403 or a failed
+write was counted as a success. It now counts what was saved, reports the ids it
+could not save, and says "Disabled N of M" rather than claiming all of them.
+
+### A failed load looked like an empty page
+
+`fetchProxyPools` ignored the status, left the list empty and logged to the
+console. "You have no proxy pools" and "the request failed" were the same screen.
+The page now names the failure and offers a retry.
+
+### The save path could say nothing
+
+`handleSave`'s error branch did `await res.json()`, which throws when a proxy
+answers 502 with HTML — inside the error path, so the operator got a console line
+and no message. The body is read as text and parsed defensively, and a thrown save
+is reported.
+
+The writers beside them were already right and are now asserted so they stay that
+way: `handleToggleActive` rolls back on both a failed response and a thrown request,
+and `bulkSetActive` and `bulkDelete` count ok and failed per id.
+
+- `backend/test-proxy-pools-page.mjs` (11 assertions) reads each handler out of the
+  page and checks the properties above. Eight mutation controls: restoring the
+  shared dead bucket, ignoring the test response's status, parsing it as JSON
+  again, dropping the `res.ok` check on the disable, restoring the empty catch,
+  restoring the over-counted success message, ungating the error banner, and
+  removing one of the two rollbacks.
+
+  Two of those were green at first for reasons worth recording. Gating the banner
+  on `loadError` was checked by asserting `role="alert"` still existed, which
+  stayed true with the condition removed; and the toggle rollback was asserted with
+  a single substring match, so replacing one of the two occurrences — the failure
+  branch and the catch branch each have one — left the other in place.
+
 ### One failed proxy test could pull a working proxy out of production
 
 `POST /api/proxy-pools/[id]/test` wrote `isActive: result.ok`, and

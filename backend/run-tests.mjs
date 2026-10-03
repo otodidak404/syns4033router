@@ -59,6 +59,7 @@ const SUITES = [
       ["test-web-handler-branches.mjs", true],
       // runs a real CONNECT proxy and a real refused connection
       ["test-proxy-pool-test.mjs", true],
+      ["test-proxy-pools-page.mjs", false],
     ];
 
 let failed = 0;
