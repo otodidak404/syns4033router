@@ -1526,6 +1526,49 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### The Ammail webhook rejected every correctly signed delivery
+
+`POST /api/automation/ammail/webhook` verified the HMAC against
+`JSON.stringify(req.body)` rather than the bytes that arrived. Re-serialising cannot
+reproduce key order, whitespace or number formatting, so a signature computed over the
+real payload never matched and every legitimate webhook was answered 401. The test
+signs a pretty-printed body and shows the two HMACs differ.
+
+`express.json()` discarded the raw bytes, so there was nothing to check against. It
+now keeps them: a `verify` hook stores `req.rawBody`, and the webhook uses it. A
+request with no raw body is refused with 400 rather than verified against a
+re-serialisation it cannot vouch for.
+
+### With no secret configured, the webhook accepted anything
+
+`verifyAmmailSignature` began `if (!secret) return true`. With
+`ammail_webhook_secret` unset — the state a fresh install is in — the endpoint was a
+public, unauthenticated writer: anyone who found the URL could store an OTP for any
+address, including one the operator was waiting on, and the signup flow would then
+consume the injected code.
+
+An unset secret now answers 503 `webhook_disabled` and names the setting. Turning
+the webhook on is the act of configuring a secret. The short-circuit inside the
+verifier is gone as well, so there is no second path back to accepting unsigned
+input; that it was unreachable did not make it worth keeping.
+
+The constant-time comparison and the `sha256=` prefix handling were already correct
+and are asserted.
+
+- `backend/test-ammail-webhook.mjs` (9 assertions) drives the compiled route with
+  real HMACs over real bytes: a correct signature is accepted, a wrong key and a
+  missing header are refused, an unavailable raw body is refused, an empty secret is
+  refused, and the verifier has no open path. Six mutation controls, each confirmed
+  to change the file first: reverting to `JSON.stringify`, restoring the empty-secret
+  short-circuit, disabling the empty-secret refusal, renaming the server's `verify`
+  hook, and emptying the captured body.
+
+  Three of those controls were green at first for reasons worth recording. The
+  verifier assertion matched a literal space where the compiler had split the line.
+  The server-wiring assertion matched `_verify:` because the regex had no word
+  boundary. And both server mutations left the unit tests green, because those tests
+  hand `rawBody` to the route directly and never see the Express wiring.
+
 ### CodeBuddy signup could only ever fail with a bare ENOENT
 
 `POST /api/automation/codebuddy` and `POST /api/automation/codebuddy/[id]` drive a

@@ -63,6 +63,8 @@ const SUITES = [
       // builds and runs all three deployed relay sources
       ["test-proxy-relays.mjs", true],
       ["test-automation-signup-runtime.mjs", false],
+      // drives the public webhook with real HMACs over real bytes
+      ["test-ammail-webhook.mjs", false],
     ];
 
 let failed = 0;

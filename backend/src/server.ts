@@ -109,7 +109,17 @@ app.use((req, res, next) => {
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
 app.use(cookieParser());
-app.use(express.json({ limit: "128mb" }));
+// The raw bytes are kept alongside the parsed body. The Ammail webhook verifies an
+// HMAC over what the sender actually sent, and JSON.stringify(req.body) cannot
+// reproduce key order, whitespace or number formatting -- so without this a
+// correctly signed delivery is rejected with 401.
+app.use(express.json({
+  limit: "128mb",
+  verify: (req, _res, buf) => {
+    try { (req as express.Request & { rawBody?: string }).rawBody = buf.toString("utf8"); }
+    catch { /* leave it unset; a route that needs it must handle its absence */ }
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: "128mb" }));
 
 // ─── Health Check (no auth) ────────────────────────────────────────────────────

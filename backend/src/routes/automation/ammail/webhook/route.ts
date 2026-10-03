@@ -7,7 +7,6 @@ import crypto from "crypto";
 export const dynamic = "force-dynamic";
 
 function verifyAmmailSignature(secret, bodyText, signatureHeader) {
-  if (!secret) return true;
   if (!signatureHeader) return false;
 
   let sig = signatureHeader.trim();
@@ -29,9 +28,31 @@ function verifyAmmailSignature(secret, bodyText, signatureHeader) {
 
 export async function POST_handler(req, res) {
   try {
-    const rawBody = JSON.stringify(req.body || {});
     const settings = await getSettings();
     const secret = (settings.ammail_webhook_secret || "").trim();
+
+    if (!secret) {
+      // This used to verify as true with no secret, which left a public endpoint
+      // that could write an OTP for any address into the store -- including one the
+      // operator is waiting on. Turning it on is the act of setting a secret.
+      return res.status(503).json({
+        ok: false,
+        error: "webhook_disabled",
+        message: "Set ammail_webhook_secret in Settings to receive Ammail webhooks.",
+      });
+    }
+
+    // Signed over the bytes that arrived, not over a re-serialisation of them:
+    // JSON.stringify cannot reproduce key order, whitespace or number formatting,
+    // so every correctly signed delivery was being rejected with 401.
+    const rawBody = req.rawBody;
+    if (typeof rawBody !== "string") {
+      return res.status(400).json({
+        ok: false,
+        error: "raw_body_unavailable",
+        message: "The webhook signature cannot be verified for this request.",
+      });
+    }
     const sig = req.headers["x-tempmail-signature"] || "";
 
     if (!verifyAmmailSignature(secret, rawBody, sig)) {
