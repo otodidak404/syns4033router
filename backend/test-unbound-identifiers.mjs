@@ -30,13 +30,13 @@ import _traverse from "@babel/traverse";
 const traverse = _traverse.default || _traverse;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOTS = ["src", "open-sse"];
+const ROOTS = ["src", "open-sse", "../frontend/src"];
 
 // .ts is not optional here. Three of the four past defects lived in a .ts route
 // file, and a .js-only check would have missed `headers: request.headers` in
 // v1beta/models/[...path] outright -- verified by mutation: reintroducing that
 // exact line left the .js-only guard green.
-const EXTS = [".js", ".ts", ".tsx"];
+const EXTS = [".js", ".jsx", ".ts", ".tsx"];
 
 // Node and web globals the runtime really provides. Anything read that is not in
 // here and has no local binding is a finding.
@@ -58,6 +58,14 @@ const GLOBALS = new Set([
   "document", "window", "location", "localStorage", "Node", "NodeFilter",
   "MutationObserver", "HTMLElement", "requestAnimationFrame",
   "cancelAnimationFrame",
+  // browser globals the dashboard uses; a missing one here would bury the
+  // findings under 65 alert()/confirm() hits
+  "alert", "confirm", "prompt", "EventSource", "FileReader", "FileList",
+  "ResizeObserver", "IntersectionObserver", "IntersectionObserverEntry",
+  "getComputedStyle", "matchMedia", "requestIdleCallback", "history",
+  "screen", "frames", "parent", "top", "scrollTo", "scrollBy", "getSelection",
+  "Image", "Audio", "Notification", "ClipboardEvent", "CustomEvent",
+  "FormData", "Headers", "Response", "Request", "AbortSignal",
   // probed with `typeof` by open-sse/executors/cursor.js to detect edge runtimes
   "caches", "EdgeRuntime",
 ]);
@@ -102,6 +110,15 @@ const isNonComputedKey = (parent, node) =>
 // Member accesses, labels and import/export specifiers are not free variable
 // reads. Object/Class members are listed by key position only -- see
 // isNonComputedKey.
+// JSX braces hold ordinary expressions, so a name read there throws exactly like
+// any other read. `{actionError && ...}` in a component that never declared it is
+// a ReferenceError on render -- and it is invisible to `Identifier` traversal,
+// because babel parses JSX names as JSXIdentifier. The detail page of every media
+// provider rendered blank for exactly this reason while `tsc --noEmit` passed and
+// a source scan for the string `actionError` also passed.
+const JSX_SKIP = new Set(["JSXIdentifier", "JSXAttribute", "JSXMemberExpression",
+                          "JSXNamespacedName", "JSXSpreadAttribute", "JSXSpreadChild"]);
+
 const SKIP_PARENT_TYPES = new Set([
   "ImportSpecifier", "ImportDefaultSpecifier", "ImportNamespaceSpecifier",
   "ExportSpecifier", "ExportNamespaceSpecifier", "ExportDefaultSpecifier",
@@ -150,6 +167,26 @@ export function unboundIdentifiers(file) {
   const filePath = path.relative(HERE, file);
 
   traverse(ast, {
+    // `{someName}` inside JSX
+    JSXExpressionContainer(p) {
+      let inner = p.get("expression");
+      while (inner && (inner.isJSXEmptyExpression() || inner.isJSXElement())) {
+        inner = inner.get?.("expression") || null;
+      }
+      if (!inner || !inner.isIdentifier()) return;
+      const name = inner.node.name;
+      if (GLOBALS.has(name)) return;
+      if (inner.scope.hasBinding(name)) return;
+      if (onlyInsideTypeof(inner)) return;
+      if (isTs && insideTypes(inner)) return;
+      found.push({
+        file: filePath,
+        line: inner.node.loc?.start?.line ?? 0,
+        name,
+        jsx: true,
+      });
+    },
+
     Identifier(p) {
       const { node, parent } = p;
       if (node.type !== "Identifier") return;
@@ -180,7 +217,12 @@ export function unboundIdentifiers(file) {
       if (p.scope.hasBinding(node.name)) return;
       if (GLOBALS.has(node.name)) return;
 
-      found.push({ file: filePath, line: node.loc?.start?.line ?? 0, name: node.name });
+      found.push({
+        file: filePath,
+        line: node.loc?.start?.line ?? 0,
+        name: node.name,
+        jsx: false,
+      });
     },
   });
 
@@ -217,13 +259,21 @@ t("the sweep actually reaches source files", () => {
   assert.ok(ts.length > 20, `only ${ts.length} .ts files scanned`);
   const kindRoute = ts.find((f) => f.includes("v1beta") && f.includes("path"));
   assert.ok(kindRoute, "the v1beta route file is not being scanned");
+
+  // The frontend .jsx files matter as much as the routes: a state declared in one
+  // component and read in another component's JSX rendered every media-provider
+  // detail page blank, and nothing else in the suite could see it.
+  const jsx = files.filter((f) => f.endsWith(".jsx"));
+  assert.ok(jsx.length > 100, `only ${jsx.length} .jsx files scanned`);
+  const connCard = jsx.find((f) => f.endsWith("ConnectionsCard.jsx"));
+  assert.ok(connCard, "ConnectionsCard.jsx is not being scanned");
 });
 
 t("no identifier is read without a binding", () => {
   const found = files.flatMap(unboundIdentifiers);
   if (found.length) {
     const shown = found.slice(0, 25)
-      .map((f) => `${f.file}:${f.line} ${f.name}`).join("\n       ");
+      .map((f) => `${f.file}:${f.line} ${f.name}${f.jsx ? "  (inside JSX)" : ""}`).join("\n       ");
     throw new Error(
       `${found.length} unbound identifier(s) -- each one is a ReferenceError on ` +
       `the line it is read:\n       ${shown}` +
@@ -248,6 +298,34 @@ t("the check still catches the four bugs it exists for", () => {
       assert.ok(found.includes(name),
         `expected "${name}" to be reported, got ${JSON.stringify(found)}`);
     }
+  } finally {
+    if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+  }
+});
+
+t("the check catches an unbound name used inside JSX", () => {
+  // The exact shape that blanked every media-provider detail page: a state
+  // declared in one component, read in another component's JSX.
+  const tmp = path.join(HERE, ".jsx-probe.jsx");
+  try {
+    fs.writeFileSync(tmp, [
+      "function Child() {",
+      '  return <div>{actionError}</div>;',
+      "}",
+      "function Parent() {",
+      "  const [realError, setRealError] = useState('');",
+      "  return <Child />;",
+      "}",
+      "export default function App() {",
+      "  const [actionError, setActionError] = useState('');",
+      "  return <section>{actionError && <b>{actionError}</b>}</section>;",
+      "}",
+    ].join("\n"));
+    const found = unboundIdentifiers(tmp).filter((f) => f.jsx);
+    assert.ok(found.some((f) => f.name === "actionError"),
+      "the unbound JSX name was not reported");
+    assert.ok(!found.some((f) => f.name === "realError"),
+      "a bound name was wrongly reported");
   } finally {
     if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
   }

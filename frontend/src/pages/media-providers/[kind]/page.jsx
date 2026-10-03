@@ -158,6 +158,9 @@ export default function MediaProviderKindPage() {
   // "you have no connections" -- an outage read as if the operator's STT
   // providers had been deleted.
   const [loadErrors, setLoadErrors] = useState([]);
+  // A write that the server refused: the optimistic toggle is rolled back and
+  // this says so, instead of the card quietly reverting.
+  const [actionError, setActionError] = useState("");
 
   // webSearch/webFetch listing pages are merged into /web
   useEffect(() => {
@@ -184,8 +187,10 @@ export default function MediaProviderKindPage() {
           throw new Error(body?.error || `HTTP ${res.status}`);
         }
         onOk(await res.json());
+        return [];
       } catch (e) {
         if (!cancelled) failed.push(`${label}: ${e?.message || e}`);
+        return [`${label}: ${e?.message || e}`];
       }
     };
 
@@ -200,7 +205,7 @@ export default function MediaProviderKindPage() {
       if (supportsCombo) {
         await readJson("/api/combos", (d) => setCombos(d.combos || []), "combos");
       }
-      if (!cancelled) setLoadErrors(failed);
+      if (!cancelled) { setLoadErrors(failed); if (!failed.length) setActionError(""); }
     })();
 
     return () => { cancelled = true; };
@@ -238,8 +243,18 @@ export default function MediaProviderKindPage() {
       )
     );
     if (results.some((r) => r.status === "rejected")) {
-      await fetchConnections();
-      toast?.({ title: "Some connections could not be updated", type: "error" });
+      // fetchConnections() has never existed in this file: the rollback path for a
+      // partially-failed bulk toggle threw ReferenceError instead of restoring the
+      // list, so the cards kept the optimistic state the server had rejected.
+      // readJson lives inside the load effect, so it is not in scope here.
+      try {
+        const res = await fetch("/api/providers", { cache: "no-store" }).then(expectOk);
+        const d = await res.json();
+        setConnections(d.connections || []);
+      } catch (e) {
+        setLoadErrors((prev) => [...new Set([...prev, `connections: ${e?.message || e}`])]);
+      }
+      setActionError("Some connections could not be updated");
     }
   };
 
@@ -275,6 +290,12 @@ export default function MediaProviderKindPage() {
               Add Custom Embedding
             </Button>
           )}
+        </div>
+      )}
+
+      {actionError && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+          <p className="text-sm font-medium text-amber-500">{actionError}</p>
         </div>
       )}
 

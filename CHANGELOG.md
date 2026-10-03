@@ -4,6 +4,53 @@ Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
 
+### Every media-provider detail page rendered blank — caught in a browser, not by any test
+
+`ConnectionsCard` gained `actionError` state anchored to
+`const [isCooldown, setIsCooldown] = useState(false)`, which appears in **two**
+components. The edit landed in `ConnectionRow`, while the JSX that reads it is in
+`ConnectionsCard`, so every detail page — STT, TTS, image, video, embedding —
+threw `ReferenceError: actionError is not defined` and rendered an empty document.
+`tsc --noEmit` passed, `vite build` passed, and a source scan for the string
+`actionError` passed, because the name existed in the file; it just existed in the
+wrong component.
+
+Only a browser found it. That is the honest account of this one.
+
+### Two rollback paths called functions that do not exist
+
+Both were already in `HEAD`, not introduced here:
+
+- `media-providers/[kind]/page.jsx` — the rollback for a partially failed bulk
+  toggle called `fetchConnections()`, which has never existed in that file.
+- `providers/page.jsx` — the same shape with `fetch_()`. There is no `fetch_` in
+  that file either; the loader is `fetchData`, and it is declared **inside** the
+  load effect, so it is not in scope from the handler either way. `toast` is not
+  imported in that file at all, so `toast?.()` was silently doing nothing.
+
+A bulk toggle that partly failed therefore threw on the rollback, kept the
+optimistic state the server had just refused, and reported nothing.
+
+### The unbound-identifier check now covers the frontend and JSX
+
+`test-unbound-identifiers.mjs` scanned `backend/src` and `backend/open-sse`, and
+its extension list was `.js .ts .tsx` — **`.jsx` was missing**, so every dashboard
+component was invisible to it. It also skipped JSX braces, where babel produces
+`JSXIdentifier` rather than `Identifier`, so the exact shape of the bug above was
+outside its reach by construction.
+
+It now walks `frontend/src` as well, visits `JSXExpressionContainer`, and its
+self-test includes the two-component case that blanked the pages. The browser
+globals the dashboard uses were added to the list; without them the report was 65
+`alert`/`confirm` hits and nothing readable.
+
+Its value was immediate: it caught two unbound references **that I had just
+introduced** while fixing the first one — a `readJson` call from outside the
+effect that declared it, and a `fetchData` call from a scope that cannot see it.
+Both were fixed in the same pass.
+
+xed
+
 ### A failed read on the media-provider list looked like "you have no connections"
 
 `/dashboard/media-providers/[kind]/page.jsx` — which is the list page for STT —

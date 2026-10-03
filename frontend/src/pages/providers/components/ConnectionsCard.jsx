@@ -34,20 +34,6 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const [isCooldown, setIsCooldown] = useState(false);
-  // Every writer below used to swallow an HTTP failure. fetch() rejects only on a
-  // network error, so a 400/404/409 from a write ran straight past the `if (res.ok)`
-  // that was supposed to be the check and the UI reported nothing -- the operator
-  // clicked save, the card moved, the server had refused.
-  const [actionError, setActionError] = useState("");
-
-  const runWrite = async (label, fn) => {
-    setActionError("");
-    try {
-      await fn();
-    } catch (e) {
-      setActionError(e?.message ? `${label}: ${e.message}` : `${label} failed`);
-    }
-  };
   const proxyDropdownRef = useRef(null);
 
   const proxyPoolMap = new Map((proxyPools || []).map((p) => [p.id, p]));
@@ -370,6 +356,12 @@ AddApiKeyModal.propTypes = {
 // ── ConnectionsCard ────────────────────────────────────────────
 // Self-contained card: fetches, displays and manages all connections for a provider.
 export default function ConnectionsCard({ providerId, isOAuth }) {
+
+  // Every writer in this component used to swallow an HTTP failure. fetch()
+  // rejects only on a network error, so a 400/404/409 from a write ran straight
+  // past the `if (res.ok)` that was supposed to be the check and the UI reported
+  // nothing -- the operator clicked save, the card moved, the server had refused.
+  const [actionError, setActionError] = useState("");
   const [connections, setConnections] = useState([]);
   const [proxyPools, setProxyPools] = useState([]);
   const [loading, setLoading] = useState(true);

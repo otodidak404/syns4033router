@@ -116,6 +116,7 @@ const APIKEY_INITIAL_VISIBLE = 20;
 
 export default function ProvidersPage() {
   const [connections, setConnections] = useState([]);
+  const [actionError, setActionError] = useState("");
   const [providerNodes, setProviderNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAllApikey, setShowAllApikey] = useState(false);
@@ -248,8 +249,18 @@ export default function ProvidersPage() {
       ),
     );
     if (results.some((r) => r.status === "rejected")) {
-      await fetch_();
-      toast?.({ title: "Some connections could not be updated", type: "error" });
+      // fetch_() does not exist in this file and toast is not imported either, so
+      // the rollback threw ReferenceError and the message went nowhere. A partially
+      // failed bulk toggle left the cards showing state the server had refused.
+      // fetchData is declared inside the load effect, so it is not in scope here.
+      try {
+        const res = await fetch("/api/providers", { cache: "no-store" }).then(expectOk);
+        setConnections((await res.json()).connections || []);
+      } catch (e) {
+        setActionError(`Some connections could not be updated (${e?.message || e})`);
+        return;
+      }
+      setActionError("Some connections could not be updated");
     }
   };
 
@@ -343,6 +354,11 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+      {actionError && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+          <p className="text-sm font-medium text-amber-500">{actionError}</p>
+        </div>
+      )}
       {!hasAnyResult && (
         <div className="text-center py-8 border border-dashed border-border rounded-xl">
           <span className="material-symbols-outlined text-[32px] text-text-muted mb-2">
