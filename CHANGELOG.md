@@ -3,6 +3,40 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### `/dashboard/media-providers/tts` — I had broken `/v1/audio/speech` myself, in commit fd8fd30
+
+Probing the endpoint directly rather than through the page:
+
+```
+POST /api/v1/audio/speech  json   → 500  {"error": "apiKey is not defined"}
+POST /api/v1/audio/speech  mp3    → 500  {"error": "apiKey is not defined"}
+every model, both formats
+```
+
+`ReferenceError`, not a validation failure — the handler crashes. `handleTts`
+imports `extractApiKey` and never calls it. The diff:
+
+```
+-  if (settings.requireApiKey) {
+-    const apiKey = extractApiKey(request);
++  if (clientApiKeyRequired({ model: modelStr, settings }).required) {
+```
+
+Replacing the `if` took the declaration with it and left `if (!apiKey)` and
+`isValidApiKey(apiKey)` behind. Every speech request that reached the key gate
+threw. `stt.js` was never affected — it binds `sttApiKey`.
+
+Nothing in the suite called a request handler, which is why it survived from
+`fd8fd30` to now. `test-handler-entrypoints.mjs` (4) imports the real handlers
+and calls them: the speech handler must return a Response rather than throw, a
+malformed body must be a 400, and every handler reading `apiKey` must declare
+it somewhere in the file. It runs under the same `@/` alias loader as `npm start`
+— registered with `true`, after it failed silently under the runner.
+
+Four mutations, all caught: the declaration removed, moved below its use, the
+import dropped, and the loader flag flipped.
+
+
 ### `/dashboard/media-providers/tts` — the voice picker asked for the wrong provider
 
 It sent `provider="edge-tts"` for everything except `local-device`:
@@ -932,7 +966,7 @@ Would inject into <model>:
 
 | check | result |
 |---|---|
-| `npm run test` | 338 assertions, 32 suites, all passed |
+| `npm run test` | 342 assertions, 33 suites, all passed |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | exit 0 |
 | `/api/tunnel/tailscale-*` before | 502, process exited |

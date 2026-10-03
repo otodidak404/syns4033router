@@ -41,6 +41,8 @@ const SUITES = [
   ["test-cli-tools-page.mjs", false],
   ["test-docs-page.mjs", false],
   ["test-media-providers-page.mjs", false],
+  // imports through "@/" — needs the alias loader
+  ["test-handler-entrypoints.mjs", true],
 ];
 
 let failed = 0;

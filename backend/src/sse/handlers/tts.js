@@ -34,6 +34,11 @@ export async function handleTts(request) {
   log.request("POST", `${url.pathname} | ${modelStr} | format=${responseFormat}${language ? ` | lang=${language}` : ""}`);
 
   const settings = await getSettings();
+  // fd8fd30 replaced the requireApiKey check with clientApiKeyRequired and took
+  // this declaration with it, leaving the two lines below referencing an
+  // identifier that does not exist. Every /v1/audio/speech request that reached
+  // the gate threw ReferenceError: apiKey is not defined and answered 500.
+  const apiKey = extractApiKey(request);
   if (clientApiKeyRequired({ model: modelStr, settings }).required) {
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     const valid = await isValidApiKey(apiKey);
