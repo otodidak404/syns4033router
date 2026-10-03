@@ -146,16 +146,37 @@ export default function WebProvidersPage() {
   const navigate = useNavigate();
   const [connections, setConnections] = useState([]);
   const [combos, setCombos] = useState([]);
+  const [loadError, setLoadError] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
   const fetchAll = async () => {
+    // This used to be `if (res.ok) set(...)` with a bare `catch {}`, so a failed
+    // load left the previous state in place and said nothing -- the page showed
+    // "No connections" whether the operator has none or the request failed.
+    let conns = null;
+    let combs = null;
     try {
       const [connsRes, combosRes] = await Promise.all([
         fetch("/api/providers", { cache: "no-store" }),
         fetch("/api/combos", { cache: "no-store" }),
       ]);
-      if (connsRes.ok) setConnections((await connsRes.json()).connections || []);
-      if (combosRes.ok) setCombos((await combosRes.json()).combos || []);
-    } catch { /* noop */ }
+      if (connsRes.ok) conns = (await connsRes.json()).connections || [];
+      if (combosRes.ok) combs = (await combosRes.json()).combos || [];
+      const failed = [
+        conns === null ? "providers" : null,
+        combs === null ? "combos" : null,
+      ].filter(Boolean);
+      if (failed.length) {
+        setLoadError(`Could not load ${failed.join(" and ")}. Showing what is already loaded.`);
+      } else {
+        setLoadError(null);
+      }
+    } catch {
+      setLoadError("Could not reach the server. Showing what is already loaded.");
+      return;
+    }
+    if (conns !== null) setConnections(conns);
+    if (combs !== null) setCombos(combs);
   };
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -173,22 +194,45 @@ export default function WebProvidersPage() {
     let i = 1;
     const existing = new Set(combos.map((c) => c.name));
     while (existing.has(name)) { name = `${base}-${i++}`; }
-    const res = await fetch("/api/combos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, models: [], kind }),
-    });
-    if (res.ok) {
-      const created = await res.json();
+    setActionError(null);
+    try {
+      const res = await fetch("/api/combos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, models: [], kind }),
+      });
+      if (!res.ok) {
+        // A proxy or the platform can answer with HTML, and `res.json()` then throws
+        // inside the error path -- so the operator saw nothing at all.
+        const raw = await res.text();
+        let message = `Failed to create combo (HTTP ${res.status})`;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed?.error) message = parsed.error;
+        } catch { /* not JSON, keep the status-based message */ }
+        setActionError(message);
+        return;
+      }
+      const created = JSON.parse(await res.text());
       navigate(`/dashboard/media-providers/combo/${created.id}`);
-    } else {
-      const err = await res.json();
-      alert(err.error || "Failed to create combo");
+    } catch (e) {
+      setActionError(`Could not reach the server: ${e?.message || e}`);
     }
   };
 
   return (
     <div className="flex flex-col gap-8">
+      {(actionError || loadError) && (
+        <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
+          <span className="material-symbols-outlined text-[18px] shrink-0">error</span>
+          <span className="flex-1">{actionError || loadError}</span>
+          {actionError && (
+            <button type="button" onClick={() => setActionError(null)}
+              className="material-symbols-outlined text-[16px] shrink-0 hover:opacity-70"
+              aria-label="Dismiss">close</button>
+          )}
+        </div>
+      )}
       <Section
         title="Web Search" icon="search" kind="webSearch"
         providers={searchProviders} connections={connections} combos={searchCombos}

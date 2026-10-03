@@ -1,18 +1,44 @@
-### The web-fetch card documented a response shape that never existed
+### The web page could not tell a failed load from an empty one
 
-The card's `defaultResponse` for `webFetch` showed
+`web/page.jsx` loaded with `if (res.ok) setConnections(...)` inside a
+`catch { /* noop */ }`. A failed request left the previous state and said nothing,
+so the page showed "No connections" whether the operator has none or the server
+unreachable. It now names which half of the load failed and keeps what it has, and
+a load that throws says so.
 
-```json
-{ "content": "...", "title": "...", "url": "..." }
-```
+`handleCreateCombo` had no `try` at all, and its failure branch did
+`const err = await res.json()` — a proxy or the platform answering with HTML makes
+that parse throw *inside* the error path, so the operator saw nothing at all. The
+body is read as text and parsed defensively, and the message is shown inline
+instead of through `alert()`. A failure to navigate also no longer leaves the page
+believing a combo exists.
 
-`buildData()` has never returned that. It returns `content` as
-`{ format, text, length }` and adds `provider`, `metadata`, `usage` and `metrics` on
-top. The dashboard was showing the operator a shape the route cannot produce. The
-example now mirrors the real object, and a test asserts that every key the core
-returns appears in it, that `content` is not shown as a string, and that the field
-names the card sends — `url`, `format`, `max_characters` — are the ones
-`handleFetch` reads.
+### Six web-fetch paths had never been executed
+
+`test-web-fetch-flow.mjs` drives `handleFetchCore`. The key gate, the credential
+lookup, the fallback loop, `checkAndRefreshToken`, the combo expansion and the
+handler's own validation had never been run by anything.
+`test-web-handler-branches.mjs` calls `handleFetch` — the handler the route calls —
+over the real auth and database modules against a temporary data directory, with
+only the outbound HTTP replaced. Measured there: a blocked url resolves no
+credential and makes no outbound call; a 403 is passed through rather than retried
+on every account; a failing account falls through to the next; the provider
+credential travels in the authorization header and not in the body or the url; the
+guard refuses `2130706433`, `0x7f000001` and `metadata.google.internal` as readily
+as `127.0.0.1`.
+
+  That file's first version passed with the key gate removed, which is worth
+  recording. The key-gate tests did not install a fetch stub, so a request the
+  router had allowed through unauthenticated went to `api.tavily.com` for real, and
+  Tavily answers 401 for a fake key — the assertion was reading Tavily's status and
+  calling it the router's. A suite-wide stub now throws on any unexpected outbound
+  call, so that cannot happen again.
+
+  Two controls are not claimed: removing `excludeConnectionIds.add()` leaves the
+  suite green, because the pool already advances past a failed account on its own;
+  and the earlier frontend assertions only checked that the error identifiers exist
+  in the file rather than that they are set, which four of the mutations here
+  initially slipped past.
 
 ### /v1/web/fetch handed any URL to the extraction provider
 

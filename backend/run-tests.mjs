@@ -55,6 +55,8 @@ const SUITES = [
       ["test-video-flow.mjs", true],
       // drives the real handleFetchCore against a stubbed fetch
       ["test-web-fetch-flow.mjs", true],
+      // drives handleFetch over the real auth and db modules
+      ["test-web-handler-branches.mjs", true],
     ];
 
 let failed = 0;
