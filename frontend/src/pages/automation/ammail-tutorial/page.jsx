@@ -1,34 +1,49 @@
 
 import { useState } from "react";
 
+function CopyButton({ value, text = "Copy", className = "", copiedStates, onCopy }) {
+const isCopied = copiedStates[value];
+return (
+    <button
+      type="button"
+      onClick={() => onCopy(value)}
+      className={`text-xs px-3 py-1 rounded cursor-pointer transition-all duration-150 flex items-center gap-1 border font-semibold shrink-0 ${
+        isCopied
+          ? "text-green-400 bg-green-500/10 border-green-500/20"
+          : "text-white/50 hover:text-white bg-white/5 hover:bg-white/10 border-transparent"
+      } ${className}`}
+    >
+      <span className="material-symbols-outlined text-[14px]">{isCopied ? "check" : "content_copy"}</span>
+      {isCopied ? "Copied" : text}
+    </button>
+  );
+};
+
 export default function AmmailTutorialPage() {
   const [copiedStates, setCopiedStates] = useState({});
+  const [copyError, setCopyError] = useState(null);
 
-  const handleCopy = (val) => {
-    navigator.clipboard.writeText(val);
-    setCopiedStates((prev) => ({ ...prev, [val]: true }));
-    setTimeout(() => {
-      setCopiedStates((prev) => ({ ...prev, [val]: false }));
-    }, 1500);
+  // Every command on this page exists to be pasted into a shell, so a copy that
+  // silently failed meant the operator pasted whatever was already on the clipboard.
+  // The old version called writeText, ignored both the rejected promise and the case
+  // where navigator.clipboard does not exist at all over plain http, and then marked
+  // the button "Copied" regardless.
+  const handleCopy = async (val) => {
+    setCopyError(null);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("The clipboard is not available here (a secure context is required)");
+      }
+      await navigator.clipboard.writeText(val);
+      setCopiedStates((prev) => ({ ...prev, [val]: true }));
+      setTimeout(() => {
+        setCopiedStates((prev) => ({ ...prev, [val]: false }));
+      }, 1500);
+    } catch (err) {
+      setCopyError(`Could not copy: ${err?.message || err}. Select the command and copy it by hand.`);
+    }
   };
 
-  const CopyButton = ({ value, text = "Copy", className = "" }) => {
-    const isCopied = copiedStates[value];
-    return (
-      <button
-        type="button"
-        onClick={() => handleCopy(value)}
-        className={`text-xs px-3 py-1 rounded cursor-pointer transition-all duration-150 flex items-center gap-1 border font-semibold shrink-0 ${
-          isCopied
-            ? "text-green-400 bg-green-500/10 border-green-500/20"
-            : "text-white/50 hover:text-white bg-white/5 hover:bg-white/10 border-transparent"
-        } ${className}`}
-      >
-        <span className="material-symbols-outlined text-[14px]">{isCopied ? "check" : "content_copy"}</span>
-        {isCopied ? "Copied" : text}
-      </button>
-    );
-  };
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4 text-white space-y-8">
@@ -52,6 +67,12 @@ export default function AmmailTutorialPage() {
       </div>
 
       <div className="space-y-6 text-sm leading-relaxed text-white/80">
+        {copyError && (
+          <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-300">
+            <span className="material-symbols-outlined shrink-0 mt-0.5">error</span>
+            <span>{copyError}</span>
+          </div>
+        )}
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-xs text-primary/95 flex items-start gap-3">
           <span className="material-symbols-outlined shrink-0 mt-0.5">lightbulb</span>
           <p>
@@ -70,7 +91,7 @@ export default function AmmailTutorialPage() {
           </p>
           <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10 font-mono text-xs text-amber-300 gap-4">
             <span className="break-all">npx wrangler login</span>
-            <CopyButton value="npx wrangler login" />
+            <CopyButton value="npx wrangler login" copiedStates={copiedStates} onCopy={handleCopy} />
           </div>
         </div>
 
@@ -81,11 +102,11 @@ export default function AmmailTutorialPage() {
             Open the Directory and Install Dependencies
           </h4>
           <p>
-            Open a terminal in your local worker directory (`tempmail`) and install the package dependencies:
+            Open a terminal in your local worker directory (<code className="bg-white/10 text-white px-1 rounded font-mono">tempmail</code>) and install the package dependencies:
           </p>
           <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10 font-mono text-xs text-amber-300 gap-4">
-            <span className="break-all">cd /home/data/Project/9router/tempmail && npm install</span>
-            <CopyButton value="cd /home/data/Project/9router/tempmail && npm install" />
+            <span className="break-all">cd /path/to/your/tempmail && npm install</span>
+            <CopyButton value="cd /path/to/your/tempmail && npm install" copiedStates={copiedStates} onCopy={handleCopy} />
           </div>
         </div>
 
@@ -100,12 +121,12 @@ export default function AmmailTutorialPage() {
           </p>
           <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10 font-mono text-xs text-amber-300 gap-4">
             <span className="break-all">npx wrangler d1 create tempmail</span>
-            <CopyButton value="npx wrangler d1 create tempmail" />
+            <CopyButton value="npx wrangler d1 create tempmail" copiedStates={copiedStates} onCopy={handleCopy} />
           </div>
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5 text-xs text-amber-300 flex items-start gap-2.5">
             <span className="material-symbols-outlined shrink-0 mt-0.5">warning</span>
             <span>
-              The command above returns **database_id** (UUID). Copy that ID, open <code className="bg-white/10 px-1 py-0.5 rounded font-mono text-white">wrangler.jsonc</code> in your tempmail project, and replace <code>database_id</code> with the new ID.
+              The command above returns <strong className="text-white">database_id</strong> (UUID). Copy that ID, open <code className="bg-white/10 px-1 py-0.5 rounded font-mono text-white">wrangler.jsonc</code> in your tempmail project, and replace <code>database_id</code> with the new ID.
             </span>
           </div>
         </div>
@@ -121,7 +142,7 @@ export default function AmmailTutorialPage() {
           </p>
           <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10 font-mono text-xs text-amber-300 gap-4">
             <span className="break-all">npx wrangler d1 migrations apply tempmail --remote</span>
-            <CopyButton value="npx wrangler d1 migrations apply tempmail --remote" />
+            <CopyButton value="npx wrangler d1 migrations apply tempmail --remote" copiedStates={copiedStates} onCopy={handleCopy} />
           </div>
         </div>
 
@@ -139,7 +160,7 @@ export default function AmmailTutorialPage() {
               <span className="break-all overflow-hidden text-ellipsis">
                 npx wrangler d1 execute tempmail --remote --command="INSERT OR IGNORE INTO chats (chat_id, username, first_name, last_name, created_at, updated_at) VALUES ('9router', '9router_admin', 'SYNS4033ROUTER', 'Admin', datetime('now'), datetime('now')); INSERT OR REPLACE INTO api_access (user_id, api_key, quota_daily, quota_used, quota_date, granted_by, granted_at, expires_at) VALUES ('9router', 'tm_YOUR_SECURE_API_KEY', 0, 0, strftime('%Y-%m-%d', 'now'), 'admin', datetime('now'), '2099-12-31T23:59:59Z');"
               </span>
-              <CopyButton value={`npx wrangler d1 execute tempmail --remote --command="INSERT OR IGNORE INTO chats (chat_id, username, first_name, last_name, created_at, updated_at) VALUES ('9router', '9router_admin', 'SYNS4033ROUTER', 'Admin', datetime('now'), datetime('now')); INSERT OR REPLACE INTO api_access (user_id, api_key, quota_daily, quota_used, quota_date, granted_by, granted_at, expires_at) VALUES ('9router', 'tm_YOUR_SECURE_API_KEY', 0, 0, strftime('%Y-%m-%d', 'now'), 'admin', datetime('now'), '2099-12-31T23:59:59Z');"`} />
+              <CopyButton value={`npx wrangler d1 execute tempmail --remote --command="INSERT OR IGNORE INTO chats (chat_id, username, first_name, last_name, created_at, updated_at) VALUES ('9router', '9router_admin', 'SYNS4033ROUTER', 'Admin', datetime('now'), datetime('now')); INSERT OR REPLACE INTO api_access (user_id, api_key, quota_daily, quota_used, quota_date, granted_by, granted_at, expires_at) VALUES ('9router', 'tm_YOUR_SECURE_API_KEY', 0, 0, strftime('%Y-%m-%d', 'now'), 'admin', datetime('now'), '2099-12-31T23:59:59Z');"`} copiedStates={copiedStates} onCopy={handleCopy} />
             </div>
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5 text-xs text-amber-300 flex items-start gap-2.5">
               <span className="material-symbols-outlined shrink-0 mt-0.5">info</span>
@@ -162,11 +183,11 @@ export default function AmmailTutorialPage() {
           <div className="space-y-3">
             <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10 font-mono text-xs text-amber-300 gap-4">
               <span className="break-all">npx wrangler secret put TELEGRAM_BOT_TOKEN</span>
-              <CopyButton value="npx wrangler secret put TELEGRAM_BOT_TOKEN" />
+              <CopyButton value="npx wrangler secret put TELEGRAM_BOT_TOKEN" copiedStates={copiedStates} onCopy={handleCopy} />
             </div>
             <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10 font-mono text-xs text-amber-300 gap-4">
               <span className="break-all">npx wrangler secret put TELEGRAM_WEBHOOK_SECRET</span>
-              <CopyButton value="npx wrangler secret put TELEGRAM_WEBHOOK_SECRET" />
+              <CopyButton value="npx wrangler secret put TELEGRAM_WEBHOOK_SECRET" copiedStates={copiedStates} onCopy={handleCopy} />
             </div>
           </div>
         </div>
@@ -182,7 +203,7 @@ export default function AmmailTutorialPage() {
           </p>
           <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10 font-mono text-xs text-amber-300 gap-4">
             <span className="break-all">npx wrangler deploy</span>
-            <CopyButton value="npx wrangler deploy" />
+            <CopyButton value="npx wrangler deploy" copiedStates={copiedStates} onCopy={handleCopy} />
           </div>
         </div>
 
@@ -199,7 +220,7 @@ export default function AmmailTutorialPage() {
             <span className="break-all">
               {'curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" -H "Content-Type: application/json" -d \'{"url":"https://<worker-host>/telegram/webhook","secret_token":"<WEBHOOK_SECRET>"}\''}
             </span>
-            <CopyButton value={`curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" -H "Content-Type: application/json" -d '{"url":"https://<worker-host>/telegram/webhook","secret_token":"<WEBHOOK_SECRET>"}'`} />
+            <CopyButton value={`curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" -H "Content-Type: application/json" -d '{"url":"https://<worker-host>/telegram/webhook","secret_token":"<WEBHOOK_SECRET>"}'`} copiedStates={copiedStates} onCopy={handleCopy} />
           </div>
         </div>
 
@@ -224,8 +245,8 @@ export default function AmmailTutorialPage() {
               </p>
               <ul className="list-disc list-inside text-xs text-white/70 mt-1.5 space-y-1 ml-2">
                 <li>Open <strong>Email Routing</strong> in your Cloudflare domain dashboard.</li>
-                <li>Select the **`Settings`** tab at the top.</li>
-                <li>to the right of **`DNS records`**, click **`Lock`** the lock icon. Cloudflare will lock and apply all required MX and TXT records.</li>
+                <li>Select the <strong className="text-white"><code className="bg-white/10 text-white px-1 rounded font-mono">Settings</code></strong> tab at the top.</li>
+                <li>to the right of <strong className="text-white"><code className="bg-white/10 text-white px-1 rounded font-mono">DNS records</code></strong>, click <strong className="text-white"><code className="bg-white/10 text-white px-1 rounded font-mono">Lock</code></strong> the lock icon. Cloudflare will lock and apply all required MX and TXT records.</li>
               </ul>
             </div>
 
@@ -238,12 +259,12 @@ export default function AmmailTutorialPage() {
                 To forward all incoming email to your Worker database:
               </p>
               <ul className="list-disc list-inside text-xs text-white/70 mt-1.5 space-y-1 ml-2">
-                <li>Click the **`Routing rules`** (the third tab).</li>
-                <li>Scroll down to **Catch-all address**.</li>
-                <li>Click **Edit** or **Configure**.</li>
-                <li>In the **Action** , select **`Send to a Worker`** .</li>
-                <li>In the **Destination** , select the deployed Worker (for example: **`tempmail-pixelnest`**).</li>
-                <li>Click **Save** to store the routing rule.</li>
+                <li>Click the <strong className="text-white"><code className="bg-white/10 text-white px-1 rounded font-mono">Routing rules</code></strong> (the third tab).</li>
+                <li>Scroll down to <strong className="text-white">Catch-all address</strong>.</li>
+                <li>Click <strong className="text-white">Edit</strong> or <strong className="text-white">Configure</strong>.</li>
+                <li>In the <strong className="text-white">Action</strong> , select <strong className="text-white"><code className="bg-white/10 text-white px-1 rounded font-mono">Send to a Worker</code></strong> .</li>
+                <li>In the <strong className="text-white">Destination</strong> , select the deployed Worker (for example: <strong className="text-white"><code className="bg-white/10 text-white px-1 rounded font-mono">tempmail-pixelnest</code></strong>).</li>
+                <li>Click <strong className="text-white">Save</strong> to store the routing rule.</li>
               </ul>
             </div>
           </div>

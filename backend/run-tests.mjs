@@ -77,6 +77,7 @@ const SUITES = [
       ["test-callback-page.mjs", false],
       ["test-console-log-page.mjs", false],
       ["test-codebuddy-debug-routes.mjs", false],
+      ["test-ammail-tutorial-page.mjs", false],
     ];
 
 let failed = 0;
