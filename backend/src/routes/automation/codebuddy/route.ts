@@ -139,6 +139,46 @@ class HttpError extends Error {
   }
 }
 
+function signupScriptFor(provider) {
+  switch (provider) {
+    case "leonardo": return "leonardo_signup.py";
+    case "weavy": return "weavy_signup.py";
+    case "kimi":
+    case "kimi-coding": return "kimi_signup.py";
+    case "qoder": return "qoder_signup.py";
+    case "cloudflare": return "cloudflare_signup.py";
+    default: return "codebuddy_signup.py";
+  }
+}
+
+function venvPythonPath() {
+  return path.resolve(process.cwd(), ".venv/bin/python");
+}
+
+function signupScriptPath(provider) {
+  return path.resolve(process.cwd(), `src/automation/${signupScriptFor(provider)}`);
+}
+
+/**
+ * Check the runtime once for a whole batch, before the job row is written.
+ *
+ * The per-account check inside the job already turns a missing interpreter into a clear
+ * message, but only after the caller has been handed a job id and has to watch it fail
+ * once per account. This answers at the request instead, and names every provider in the
+ * batch that cannot run rather than only the first.
+ */
+function missingSignupRuntimeFor(providers) {
+  const python = venvPythonPath();
+  const missing = [];
+  if (!fs.existsSync(python)) missing.push(python);
+  const scripts = [...new Set(providers.map((p) => signupScriptFor(p || "codebuddy")))];
+  for (const script of scripts) {
+    const full = path.resolve(process.cwd(), `src/automation/${script}`);
+    if (!fs.existsSync(full)) missing.push(full);
+  }
+  return missing;
+}
+
 export async function GET(req, res) {
   try {
     const { getAdapter } = await import("../../../lib/db/driver.js");
@@ -335,8 +375,20 @@ export async function POST_handler(req, res) {
 
       if (run_now && createdAccounts.length > 0) {
         const targetIds = createdAccounts.map(a => a.id);
+        // Every inbox this starts was just created for one provider, so there is
+        // nothing to read off a list here.
+        const batchProviders = [targetProvider];
         const jobId = uuidv4();
         const concurrencyLimit = parseInt(concurrency) || 3;
+        const refusal = missingSignupRuntimeFor(batchProviders);
+        if (refusal.length) {
+          return res.status(501).json({
+            ok: false,
+            error: `Signup needs Python and its scripts, which this deployment does not provide. `
+              + `Missing: ${refusal.join(", ")}. No job was started.`,
+          });
+        }
+        
         await createCodeBuddyJob(jobId, "signup", targetIds.length);
         runCodeBuddySignupJob(jobId, targetIds, concurrencyLimit).catch(console.error);
         response.job_id = jobId;
@@ -416,8 +468,18 @@ export async function POST_handler(req, res) {
       };
 
       if (run_now && targetIds.length > 0) {
+        const batchProviders = [targetProvider];
         const jobId = uuidv4();
         const concurrencyLimit = parseInt(concurrency) || 3;
+        const refusal = missingSignupRuntimeFor(batchProviders);
+        if (refusal.length) {
+          return res.status(501).json({
+            ok: false,
+            error: `Signup needs Python and its scripts, which this deployment does not provide. `
+              + `Missing: ${refusal.join(", ")}. No job was started.`,
+          });
+        }
+        
         await createCodeBuddyJob(jobId, "signup", targetIds.length);
         
         // Start background runner async
@@ -449,7 +511,19 @@ export async function POST_handler(req, res) {
         return res.status(400).json({ error: "Another job is already running." });
       }
 
+      const batchProviders = [...new Set(
+        accounts.filter(a => targetIds.includes(a.id)).map(a => a.provider || "codebuddy")
+      )];
       const jobId = uuidv4();
+      const refusal = missingSignupRuntimeFor(batchProviders);
+      if (refusal.length) {
+        return res.status(501).json({
+          ok: false,
+          error: `Signup needs Python and its scripts, which this deployment does not provide. `
+            + `Missing: ${refusal.join(", ")}. No job was started.`,
+        });
+      }
+      
       await createCodeBuddyJob(jobId, "signup", targetIds.length);
       runCodeBuddySignupJob(jobId, targetIds, concurrencyLimit).catch(console.error);
 
@@ -713,18 +787,8 @@ function missingSignupRuntime(venvPython, scriptPath) {
   if (!fs.existsSync(scriptPath)) missing.push(scriptPath);
   return missing;
 }
-      const venvPython = path.resolve(process.cwd(), ".venv/bin/python");
-      const scriptPath = isLeonardo 
-        ? path.resolve(process.cwd(), "src/automation/leonardo_signup.py")
-        : isWeavy
-        ? path.resolve(process.cwd(), "src/automation/weavy_signup.py")
-        : isKimi
-        ? path.resolve(process.cwd(), "src/automation/kimi_signup.py")
-        : isQoder
-        ? path.resolve(process.cwd(), "src/automation/qoder_signup.py")
-        : isCloudflare
-        ? path.resolve(process.cwd(), "src/automation/cloudflare_signup.py")
-        : path.resolve(process.cwd(), "src/automation/codebuddy_signup.py");
+      const venvPython = venvPythonPath();
+      const scriptPath = signupScriptPath(account.provider || "codebuddy");
       const missingRuntime = missingSignupRuntime(venvPython, scriptPath);
       if (missingRuntime.length) {
         const msg = `Signup needs Python and ${scriptPath}, which this deployment does not ` +

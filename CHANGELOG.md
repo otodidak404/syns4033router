@@ -1526,6 +1526,44 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### Starting a signup job that could not run
+
+The per-account preflight turned a missing interpreter into a clear message, but only
+after the dashboard had been handed a job id — so pressing Run produced a job that failed
+once per account with the same reason. All three start points (`auto-generate-email` with
+`run_now`, `add-google` with `run_now`, and `run-all`) now check the runtime once for the
+whole batch and answer **501** listing what is missing, before the job row is written.
+
+`signupScriptFor` replaces a seven-branch inline ternary that chose the script by
+re-testing the provider name, so the gate and the runner cannot disagree — and the two
+Kimi spellings are one case in both. The helper lives at module scope, since the first
+version of it landed inside the worker function where the handlers could not reach it.
+
+- `backend/test-codebuddy-signup-gate.mjs` (8 assertions) checks that all three start
+  points are gated and that the check runs before the job row is created, that the
+  per-account check still exists inside the job, that the runner uses the shared mapping
+  rather than rebuilding the path, and that the gate is not dead code by asserting the
+  runner image installs no Python and the four signup scripts are absent. Ten mutation
+  controls, nine confirmed to change the file first and turn the suite red.
+
+Three of those controls were green while hiding real weaknesses:
+
+- the assertion that the per-account check exists matched the function *definition*
+  rather than its call, so deleting the call left it green;
+- the loop inside the job was not checked at all;
+- the ordering assertion looked only at the first start point, because
+  `starts.map(x => src.indexOf(x))` returns the same index three times — which hid that
+  the guard had been inserted **after** the job row was created, leaving an orphan job
+  behind on every refusal.
+
+`test-automation-signup-runtime.mjs` extracted its helper with
+`indexOf("function missingSignupRuntime")`, which began matching the new
+`missingSignupRuntimeFor` first. It now matches the paren.
+
+A tenth control, pointing a batch at a provider name the route does not know, stayed
+green: the `default` branch maps unknown names to `codebuddy_signup.py`, which is absent,
+so the gate still refuses. That is correct behaviour and is not counted as evidence.
+
 ### One request could ask for an unbounded number of inboxes
 
 `auto-generate-email` read `parseInt(count) || 1` straight from the body with no

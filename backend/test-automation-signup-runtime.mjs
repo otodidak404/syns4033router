@@ -89,7 +89,9 @@ for (const file of ["route.ts", "[id]/route.ts"]) {
 
 t("the preflight reports every missing piece, not just the first", () => {
   const src = read("route.ts");
-  const from = src.indexOf("function missingSignupRuntime");
+  // Match the paren: "function missingSignupRuntime" also matches missingSignupRuntimeFor,
+  // which now sits earlier in the file, so the extracted body was the wrong function.
+  const from = src.indexOf("function missingSignupRuntime(");
   const fn = src.slice(from, from + 700);
   const end = fn.indexOf("\n}");
   const body = fn.slice(0, end + 2);
