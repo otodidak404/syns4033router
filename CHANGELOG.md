@@ -1,3 +1,19 @@
+### The web-fetch card documented a response shape that never existed
+
+The card's `defaultResponse` for `webFetch` showed
+
+```json
+{ "content": "...", "title": "...", "url": "..." }
+```
+
+`buildData()` has never returned that. It returns `content` as
+`{ format, text, length }` and adds `provider`, `metadata`, `usage` and `metrics` on
+top. The dashboard was showing the operator a shape the route cannot produce. The
+example now mirrors the real object, and a test asserts that every key the core
+returns appears in it, that `content` is not shown as a string, and that the field
+names the card sends — `url`, `format`, `max_characters` — are the ones
+`handleFetch` reads.
+
 ### /v1/web/fetch handed any URL to the extraction provider
 
 `handleFetch` validated the caller's URL with `new URL(targetUrl)` and stopped

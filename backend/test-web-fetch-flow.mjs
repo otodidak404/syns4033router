@@ -229,6 +229,44 @@ t("the frontend and backend tables agree on fetchConfig", async () => {
   }
 });
 
+t("the response shape the dashboard shows is the shape the core returns", async () => {
+  // buildData() returns content as { format, text, length } plus provider,
+  // metadata, usage and metrics. The card showed `"content": "..."` -- a string.
+  const r = await withFetch(
+    () => new Response(JSON.stringify({ results: [{ raw_content: "hello" }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } }),
+    () => handleFetchCore({ url: "https://example.com", provider: "tavily",
+      providerConfig: {}, credentials: { apiKey: "k" }, log: logger }),
+  );
+  assert.equal(r.success, true, r.error);
+  const keys = Object.keys(r.data).sort();
+  const page = fs.readFileSync(
+    path.join(HERE, "../frontend/src/pages/media-providers/[kind]/[id]/page.jsx"), "utf8");
+  const i = page.indexOf("webFetch: {");
+  const example = page.slice(i, page.indexOf("image: {", i));
+  for (const k of keys) {
+    assert.ok(example.includes(`"${k}"`),
+      `the dashboard example omits "${k}", which the response carries`);
+  }
+  // and it must not claim content is a bare string
+  assert.ok(!example.includes('"content": "..."'),
+    'the example still shows content as a string');
+  assert.ok(example.includes('"content": {'), "the example does not show content as an object");
+});
+
+t("the field names the card sends are the ones the handler reads", () => {
+  const page = fs.readFileSync(
+    path.join(HERE, "../frontend/src/pages/media-providers/[kind]/[id]/page.jsx"), "utf8");
+  const i = page.indexOf("webFetch: {");
+  const blk = page.slice(i, page.indexOf("image: {", i));
+  const h = fs.readFileSync(path.join(HERE, "src/sse/handlers/fetch.js"), "utf8");
+  assert.ok(/bodyKey:\s*"url"/.test(blk), "the card does not send bodyKey url");
+  for (const k of ["format", "max_characters"]) {
+    assert.ok(blk.includes(`key: "${k}"`), `the card does not offer ${k}`);
+    assert.ok(h.includes(`body.${k}`), `the handler never reads body.${k}`);
+  }
+});
+
 t("the route hands the handler a body it can parse", () => {
   const src = fs.readFileSync(
     path.join(HERE, "src/routes/v1/web/fetch/route.ts"), "utf8");

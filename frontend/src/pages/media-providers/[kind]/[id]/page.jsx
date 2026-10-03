@@ -87,7 +87,10 @@ const KIND_EXAMPLE_CONFIG = {
     inputPlaceholder: "https://example.com",
     defaultInput: "https://example.com",
     bodyKey: "url",
-    defaultResponse: `{\n  "content": "...",\n  "title": "...",\n  "url": "..."\n}`,
+    // buildData() returns content as an object and adds provider, metadata, usage
+    // and metrics. This example used to render content as a bare string, so the
+    // shape shown in the dashboard was not the shape the route returns.
+    defaultResponse: `{\n  "provider": "tavily",\n  "url": "https://example.com",\n  "title": "...",\n  "content": { "format": "markdown", "text": "...", "length": 0 },\n  "metadata": { "author": null, "published_at": null, "language": null },\n  "usage": { "fetch_cost_usd": null },\n  "metrics": { "response_time_ms": 0, "upstream_latency_ms": 0 }\n}`,
     extraFields: [
       { key: "format", label: "Format", type: "select", default: "markdown", options: ["markdown", "text", "html"] },
       { key: "max_characters", label: "Max chars", type: "number", default: 0, min: 0 },
