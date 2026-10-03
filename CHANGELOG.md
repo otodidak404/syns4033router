@@ -1526,6 +1526,59 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### /dashboard/system-prompt reported nothing when its requests failed
+
+Three of the page's writers swallowed every failure, which is the class this menu
+otherwise handles well — the routes validate, the playground runs real requests, and the
+injection path is sound.
+
+- **The three-way load.** Prompts, providers and aliases are fetched in parallel and each
+  fails on its own. Every failure went to a `console.log`, so a refused request left the
+  page showing no prompts, no providers and no aliases at all — which reads as an empty
+  install rather than a failed request. It now names each part that did not load, keeps
+  whatever is already on screen, and offers a retry.
+- **The model catalogue behind the test panel** became `[]` on any failure, leaving the
+  playground with nothing to run on and nothing said. A non-2xx was also treated as an
+  empty list; it is now a failure, reported.
+- **Delete had no `else` branch.** A refused delete left the entry on screen with nothing
+  said while the prompt stayed live, and a network error threw out of the confirm
+  callback with nobody listening. Since the prompt keeps injecting after a "deleted"
+  entry, the message now says it is still live.
+
+### What was already right, and is now proved rather than assumed
+
+The menu's whole point is whether a saved prompt reaches a provider, so that tier is now
+executed rather than read: `pickEntry` resolves the library against a real entry set, the
+winner is fed through the real format-aware injector, and the body is read back for
+OpenAI chat, Claude and Gemini shapes.
+
+Two things that turned out to be deliberate, and are worth recording because they look
+wrong at a glance:
+
+- `injectSystemText` is an appender and is **not** idempotent. The guard belongs in the
+  caller, which is the only party that knows the marker it is about to write, and both
+  callers have one — `livePrompt.js` checks `readSystemText(...).includes(block)` and
+  `modelSkill.js` checks `current.includes(marker)`. An earlier version of the new test
+  asserted idempotence in the wrong place and failed against correct code.
+- The playground marks its own request with `markInternal()` **on the Request object**,
+  not a header, so "skip the library entry" cannot be forged from outside. The library
+  entry and the operator's draft never stack.
+
+- `backend/test-system-prompt-page-flow.mjs` (8 assertions) runs the load outcome for all
+  four combinations of which parts failed, checks the delete message, the retry and that
+  the banner sits inside the page root rather than beside it — a placement that produced
+  two siblings and a syntax error three times elsewhere in this repo. Seven mutation
+  controls.
+- `backend/test-system-prompt-injects.mjs` (14 assertions) covers resolution precedence
+  (exact, per-model over wildcard, inactive and draft entries excluded, ambiguous bare
+  names not guessed), the body changing in each format, read-back round-tripping, the
+  idempotence guards being present in both callers, and an unresolvable entry leaving the
+  body untouched. Four mutation controls.
+
+One control in the page suite was green while the page was broken: it asserted only that
+`setLoadError` appears, which the `catch` satisfies on its own. It now requires the
+per-part message to be computed on the success path, before the catch.
+
 ### Starting a signup job that could not run
 
 The per-account preflight turned a missing interpreter into a clear message, but only

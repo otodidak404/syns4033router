@@ -274,10 +274,15 @@ function Playground({ entries, initialEntryId, onLoadAll, activeProviders, model
   // global prompt a chore for no gain — so a model is chosen here, preferring one
   // that runs with no provider key, and the operator can still override it.
   useEffect(() => {
+    // An empty catalogue left the test panel with nothing to run on and nothing said,
+    // which reads as "this entry has no models" rather than "the list did not load".
     fetch("/api/models")
-      .then(r => (r.ok ? r.json() : { models: [] }))
-      .then(d => setCatalog(d.models || d.data || []))
-      .catch(() => setCatalog([]));
+      .then(async (r) => {
+        const d = r.ok ? await r.json().catch(() => ({})) : {};
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setCatalog(d.models || d.data || []);
+      })
+      .catch((e) => setError(`Could not load the model list: ${e?.message || e}`));
   }, []);
 
   const selected = entries.find(e => e.id === selectedId) || null;
@@ -458,6 +463,7 @@ export default function SystemPromptPage() {
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [toast, setToast] = useState("");
+  const [loadError, setLoadError] = useState(null);
   const [playgroundSeed, setPlaygroundSeed] = useState(null);
 
   const notify = useCallback((msg) => {
@@ -484,8 +490,21 @@ export default function SystemPromptPage() {
         const d = await aliasRes.json();
         setModelAliases(d.aliases || {});
       }
+
+      // Each of these fails on its own. Reporting nothing left the page showing no
+      // prompts, no providers and no aliases at all, which reads as an empty install.
+      const failed = [
+        spRes.ok ? null : "prompts",
+        provRes.ok ? null : "providers",
+        aliasRes.ok ? null : "aliases",
+      ].filter(Boolean);
+      setLoadError(
+        failed.length
+          ? `Could not load ${failed.join(", ")}. Showing what is already loaded.`
+          : null
+      );
     } catch (error) {
-      console.log("Error fetching system prompts:", error);
+      setLoadError(`Could not reach the server: ${error?.message || error}`);
     } finally {
       setLoading(false);
     }
@@ -542,10 +561,20 @@ export default function SystemPromptPage() {
       message: `Delete "${entry.label}"? This stops injection for ${entry.model}.`,
       onConfirm: async () => {
         setConfirm(null);
-        const res = await fetch(`/api/system-prompts/${entry.id}`, { method: "DELETE" });
-        if (res.ok) {
+        // The old version had no else branch: a refused delete left the entry on screen
+        // with nothing said, and a network error threw out of this callback with nobody
+        // listening. The prompt also stays live, so "deleted" has to be the server's word.
+        try {
+          const res = await fetch(`/api/system-prompts/${entry.id}`, { method: "DELETE" });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            notify(err.error || `Delete failed (HTTP ${res.status}) — the prompt is still live`);
+            return;
+          }
           setEntries(prev => prev.filter(e => e.id !== entry.id));
           notify("JB dihapus");
+        } catch (error) {
+          notify(`Could not reach the server: ${error?.message || error}`);
         }
       },
     });
@@ -564,6 +593,15 @@ export default function SystemPromptPage() {
 
   return (
     <div className="relative flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+      {loadError && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+          <span className="material-symbols-outlined text-[18px] shrink-0">error</span>
+          <span className="flex-1">{loadError}</span>
+          <button type="button" onClick={() => fetchData()}
+            className="material-symbols-outlined text-[16px] shrink-0 hover:opacity-70"
+            aria-label="Retry">refresh</button>
+        </div>
+      )}
       {/* Toast */}
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-lg bg-surface border border-border px-4 py-2.5 text-sm text-text-main shadow-lg">
