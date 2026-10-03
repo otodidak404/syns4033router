@@ -146,6 +146,23 @@ t("the server keeps the raw body for the signature to be checked against", () =>
   assert.ok(/rawBody\s*=/.test(seg), "the verify hook does not store the raw body");
   assert.ok(/buf\.toString\("utf8"\)/.test(seg),
     "the raw body is not captured as utf8 text");
+  // The capture must be bounded. The parser on this global accepts 128mb, so an
+  // unbounded verify hook would let an unauthenticated caller pin a 128 MB string
+  // per request by sending a large JSON body.
+  assert.ok(/RAW_BODY_LIMIT_BYTES/.test(seg),
+    "the raw-body capture has no size bound");
+  // Evaluate the expression rather than reading its first number: "128 * 1024 * 1024"
+  // parses as 128, which passes a naive bound and is exactly the value to catch.
+  const expr = (srv.match(/RAW_BODY_LIMIT_BYTES\s*=\s*([^;]+);/) || [])[1];
+  assert.ok(expr, "the raw-body bound is not a plain expression");
+  assert.ok(/^[\d\s*+()-]+$/.test(expr.trim()),
+    `the raw-body bound is not arithmetic: ${expr}`);
+  const lim = new Function(`return ${expr.trim()}`)();
+  assert.ok(Number.isFinite(lim), `the raw-body bound does not evaluate: ${expr}`);
+  assert.ok(lim > 0 && lim <= 4 * 1024 * 1024,
+    `the raw-body bound is ${lim} bytes; a webhook payload needs far less`);
+  const guardAt = srv.indexOf("buf.length > RAW_BODY_LIMIT_BYTES", at);
+  assert.ok(guardAt > at, "the capture is not guarded by the size check");
 });
 
 await drain();

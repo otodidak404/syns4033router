@@ -113,9 +113,17 @@ app.use(cookieParser());
 // HMAC over what the sender actually sent, and JSON.stringify(req.body) cannot
 // reproduce key order, whitespace or number formatting -- so without this a
 // correctly signed delivery is rejected with 401.
+// 1 MiB is generous for a webhook payload and small enough that keeping the bytes is
+// not a lever: the parser already accepts 128mb on this global, so an unauthenticated
+// caller could otherwise make the server hold a 128 MB string per request by sending
+// a large body with a JSON content type. Anything larger is simply not captured, and
+// a route that needs the raw bytes refuses rather than falling back to a guess.
+const RAW_BODY_LIMIT_BYTES = 1024 * 1024;
+
 app.use(express.json({
   limit: "128mb",
   verify: (req, _res, buf) => {
+    if (buf.length > RAW_BODY_LIMIT_BYTES) return;
     try { (req as express.Request & { rawBody?: string }).rawBody = buf.toString("utf8"); }
     catch { /* leave it unset; a route that needs it must handle its absence */ }
   },

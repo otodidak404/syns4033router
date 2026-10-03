@@ -1539,6 +1539,18 @@ now keeps them: a `verify` hook stores `req.rawBody`, and the webhook uses it. A
 request with no raw body is refused with 400 rather than verified against a
 re-serialisation it cannot vouch for.
 
+### Keeping the raw body was a memory lever on a public route
+
+Adding the `verify` hook that fixed the signature check made it worse in one
+direction: the hook retains the parsed buffer as a string, and the JSON parser on
+this global accepts 128mb. The Ammail webhook is public, so an unauthenticated caller
+could make the server hold a 128 MB string per request by sending a large body with a
+JSON content type.
+
+The capture is bounded at 1 MiB — generous for a webhook payload. A larger body is
+simply not captured, and the webhook answers 400 rather than falling back to a
+re-serialisation it cannot vouch for.
+
 ### With no secret configured, the webhook accepted anything
 
 `verifyAmmailSignature` began `if (!secret) return true`. With
