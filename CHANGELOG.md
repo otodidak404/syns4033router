@@ -1526,6 +1526,43 @@ heading each, in that order, with no horizontal rule splitting a section in two.
 
 ## Fixed
 
+### The OTP webhook could be pointed at any host the caller named
+
+`webhook-register` built its address from `req.headers["host"]` and
+`req.headers["x-forwarded-proto"]`, then passed it to `client.setWebhook` with a freshly
+generated secret. The Worker POSTs every OTP delivery to whatever was registered, so a
+request carrying `Host: attacker.example` got the OTP feed redirected there, correctly
+signed, and reported as success. The dashboard's summary built the same address the same
+way.
+
+Registration now refuses to use the Host header at all. It uses `AMMAIL_PUBLIC_URL`
+(preferred), `ROUTER_PUBLIC_URL` or `PUBLIC_URL`, or an enabled tunnel, and otherwise
+answers **400** naming the variable to set. This is a deliberate behaviour change: an
+installation that registered a webhook with nothing configured will now be told what to
+configure instead of silently binding to a header.
+
+The dashboard still shows an address, because a wrong-looking value on screen is a
+nuisance rather than a breach — but it is labelled `webhook_url_trusted` and
+`webhook_url_source`, so an operator can see when it came from the request rather than
+from configuration.
+
+- `backend/src/lib/net/publicUrl.js` — `displayBaseUrl` for the page, which may fall back
+  to the Host header and marks the result untrusted, and `registrationBaseUrl` for the
+  registration, which takes no headers at all. Both reject a Host carrying userinfo, a
+  path, a fragment or whitespace, so `evil.example#@router.example.com` cannot smuggle a
+  fragment past the `/api/automation/ammail/webhook` suffix.
+- `backend/test-ammail-webhook-url.mjs` (14 assertions) runs both functions against
+  caller-supplied headers, and checks that the address returned is the address that was
+  validated. Six mutation controls, each confirmed to change the file first.
+
+Two notes on how that last assertion came to exist. The first version of
+`registrationBaseUrl` validated `new URL(value).host` and then returned the raw string,
+so `https://user@evil.example` passed the check and came back still carrying its
+userinfo — the test caught it, and the function now rebuilds the address from the parts
+it checked. And the assertion that the register branch answers 400 first sliced to the
+end of the file, where a later action's 400 satisfied it; removing this branch's refusal
+stayed green until the slice was bounded to the branch.
+
 ### Two CodeBuddy debug routes that could never work, and did not say so
 
 `POST /api/automation/codebuddy/test-proxy` runs `src/automation/test_proxy.py`. The

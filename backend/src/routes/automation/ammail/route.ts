@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from "../../../lib/localDb.js";
 import { getAmmailClientFromSettings } from "../../../lib/automation/ammailClient.js";
 import { listAmmailOtps, deleteAmmailOtpsBulk } from "../../../lib/db/index.js";
 import crypto from "crypto";
+import { displayBaseUrl, registrationBaseUrl } from "../../../lib/net/publicUrl";
 import fs from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -71,15 +72,15 @@ export async function GET_handler(req, res) {
       }
     }
 
-    let tunnelUrl = (settings.tunnelEnabled && settings.tunnelUrl) ? settings.tunnelUrl : "";
-    let webhookUrl = "";
-    if (tunnelUrl) {
-      webhookUrl = `${tunnelUrl.replace(/\/+$/, "")}/api/automation/ammail/webhook`;
-    } else {
-      const scheme = req.headers["x-forwarded-proto"] || "http";
-      const host = req.headers["host"];
-      webhookUrl = `${scheme}://${host}/api/automation/ammail/webhook`;
-    }
+    // For display only. This value is derived from the caller's own Host header when
+    // nothing is configured, so it is labelled rather than trusted -- see publicUrl.js.
+    const shown = displayBaseUrl(
+      { headers: req.headers, ammailTunnelUrl: settings.tunnelEnabled ? settings.tunnelUrl : "" },
+      process.env
+    );
+    const webhookUrl = shown.baseUrl
+      ? `${shown.baseUrl}/api/automation/ammail/webhook`
+      : "";
 
     if (connectionOk && inboxes.length > 0) {
       // Run message synchronization in the background
@@ -148,6 +149,8 @@ export async function GET_handler(req, res) {
       })),
       webhook,
       webhook_url: webhookUrl,
+      webhook_url_trusted: shown.trusted,
+      webhook_url_source: shown.source,
       settings: {
         base_url: settings.ammail_base_url || "",
         api_key: settings.ammail_api_key || "",
@@ -471,19 +474,21 @@ export async function POST_handler(req, res) {
         await updateSettings({ ammail_webhook_secret: secret });
       }
 
-      let tunnelUrl = (settings.tunnelEnabled && settings.tunnelUrl) ? settings.tunnelUrl : "";
-      let webhookUrl = "";
-      if (tunnelUrl) {
-        webhookUrl = `${tunnelUrl.replace(/\/+$/, "")}/api/automation/ammail/webhook`;
-      } else {
-        const scheme = req.headers["x-forwarded-proto"] || "http";
-        const host = req.headers["host"];
-        webhookUrl = `${scheme}://${host}/api/automation/ammail/webhook`;
+      // Not the display path: this address is registered with the Worker, which then
+      // POSTs every OTP delivery to it, signed with the secret above. A Host header is
+      // whatever the caller sent, so it cannot be used here.
+      const target = registrationBaseUrl({
+        tunnelUrl: settings.tunnelEnabled ? settings.tunnelUrl : "",
+        env: process.env,
+      });
+      if (!target.ok) {
+        return res.status(400).json({ error: target.reason });
       }
+      const webhookUrl = `${target.baseUrl}/api/automation/ammail/webhook`;
 
       try {
         const webhookRes = await client.setWebhook(webhookUrl, secret);
-        return res.json({ ok: true, webhook: webhookRes });
+        return res.json({ ok: true, webhook: webhookRes, webhook_url: webhookUrl });
       } catch (e) {
         return res.status(502).json({ error: e.message || String(e) });
       }
