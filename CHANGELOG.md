@@ -3,6 +3,23 @@
 Format: entries under **Fixed** must name **file:line** and be backed by a test
 or a recorded run. Anything unproven belongs under **Known issues**, not there.
 Sections are `## Fixed
+### The handler sweep, and a timeout it was missing itself
+
+`sweep-handlers.mjs` imports every request handler under `src/sse/handlers` and
+calls each exported single-argument function with a minimal `Request`. It is how
+`search.js` was found. Scope, stated plainly: 8 files, 8 entrypoints — it does
+not cover `open-sse/handlers/`, which holds provider adapters and cores rather
+than request entrypoints.
+
+```
+files 8 · ok 8 · importFail 0 · importTimeout 0 · refErr 0 · other 0 · timeout 0
+```
+
+The sweep had a defect of its own: calls were capped at 2.5s but imports were
+not, and a module that does work at import time left it running past 845s before
+being killed. Both are capped now.
+
+
 ### `/v1/search` — the same commit broke a second endpoint
 
 `search.js` line 50 read `clientApiKeyRequired({ model: modelStr, … })` in a

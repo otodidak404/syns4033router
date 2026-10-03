@@ -6,8 +6,8 @@
 // parser beats a regex for "is this identifier bound", and calling beats
 // parsing for "does this path work".
 //
-// Per-call timeout, because several handlers poll an upstream for images or
-// video and would otherwise hang the sweep.
+// Timeouts on BOTH the import and the call: several handlers poll an upstream
+// for images or video, and several modules do work at import time.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -32,13 +32,24 @@ const cap = (p) => Promise.race([
   new Promise((r) => setTimeout(() => r("__TIMEOUT__"), 2500)),
 ]);
 
-const report = { files: files.length, ok: [], importFail: [], refErr: [], other: [], timeout: [] };
+const report = { files: files.length, ok: [], importFail: [], importTimeout: [], refErr: [], other: [], timeout: [] };
 
 for (const f of files) {
   let mod;
   try {
-    mod = await import(path.resolve(f));
+    // The import needs the cap too. Several modules do work at import time and
+    // without this the sweep hangs indefinitely on the first one -- it sat at
+    // 845s before this line existed.
+    const raced = await Promise.race([
+      import(path.resolve(f)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("__IMPORT_TIMEOUT__")), 8000)),
+    ]);
+    mod = raced;
   } catch (e) {
+    if (String(e.message) === "__IMPORT_TIMEOUT__") {
+      report.importTimeout.push(f);
+      continue;
+    }
     report.importFail.push(`${f}  ${e.constructor.name}: ${String(e.message).slice(0, 70)}`);
     continue;
   }
