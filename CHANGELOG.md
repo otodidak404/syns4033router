@@ -1,3 +1,37 @@
+## Fixed
+
+### The CRUD routes behind /dashboard/system-prompt had never been executed
+
+Asked whether this menu was finished, it was not. Fifteen suites touch it and all of them
+read the route files as text — none imported them, and none called `GET`, `POST_handler`,
+`PUT_handler` or `DELETE_handler`. 179 lines of validation, duplicate detection, size
+limits, control-character rejection and 404 handling had never run once.
+
+- `backend/test-system-prompt-crud-routes.mjs` (12 assertions) imports the **compiled**
+  routes out of `dist` — what `buildAutoRouter` loads, so it proves something about what
+  actually runs rather than about the TypeScript source — and drives them against a real
+  database: create and list, the one-entry-per-model rule, every rejected field, a model
+  id carrying a NUL, read-one and its 404, each editable field, non-boolean toggles,
+  refusing a move onto an occupied model, allowing an entry to keep its own model, a 404
+  on an unknown id, and delete-then-404.
+
+  Its response recorder defaults a bare `res.json()` to 200, because Express does. Three
+  assertions read `undefined` and failed until it did.
+
+  Seven mutation controls, each followed by a full backend rebuild since the suite reads
+  `dist`: removing the duplicate check, the prompt size cap, the control-character check,
+  the boolean-toggle check, making DELETE always succeed, and removing GET-one's 404.
+
+  A seventh control — dropping the `clash.id !== id` guard — stayed green. It is not a
+  weak assertion: `if (model !== current.model)` gates the lookup, so a clash can never be
+  the entry itself and the comparison is unreachable. There is nothing there to
+  discriminate, and it is recorded as untested rather than as evidence.
+
+### This file had no heading at all
+
+Every entry sat directly under nothing: repeated edits this session spliced the file on
+the string `"## Fixed"` and consumed the heading itself each time. Restored.
+
 ### A freshly deployed relay went straight into routing
 
 All three deploy routes created their pool with `isActive: true`. The URL had just
