@@ -1,5 +1,29 @@
 ## Fixed
 
+### Two of the thirteen wire formats had no coverage at all
+
+`FORMATS` has thirteen entries. `GEMINI_CLI` and `VERTEX` were named by no suite, so the
+claim that "the Gemini branch handles them" rested on reading a `case` label. If that
+branch's idea of where a system prompt lives were wrong for either shape — and Vertex
+carries `systemInstruction` rather than `messages` — nothing would have said so.
+
+- `backend/test-system-prompt-formats.mjs` (10 assertions) builds each body with the
+  **real** translator (`openaiToVertexRequest`, the Gemini CLI request) rather than a
+  hand-written stand-in, injects with the real injector and reads it back with the real
+  reader. It checks where the text lands and that `contents` is untouched, that the
+  operator's own system message survives alongside the injected one, that a body with no
+  system prompt still gets a slot, and that Antigravity's `body.request` wrapper does not
+  swallow the payload.
+
+  Its last assertion walks **every** value in `FORMATS` — all thirteen — and requires each
+  one to round-trip, so a format added later without a branch fails rather than passing
+  quietly.
+
+  Six mutation controls: writing to the wrapper instead of the payload, removing `VERTEX`
+  from the read branch, accepting an empty prompt, writing to `contents` instead of
+  `systemInstruction`, and removing `VERTEX`, then `VERTEX` and `GEMINI_CLI`, from the
+  inject branch.
+
 ### The CRUD routes behind /dashboard/system-prompt had never been executed
 
 Asked whether this menu was finished, it was not. Fifteen suites touch it and all of them

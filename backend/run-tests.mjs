@@ -15,6 +15,7 @@ const SUITES = [
   ["test-model-skill.mjs", false],
   ["test-live-prompt.mjs", true],
   ["test-system-prompt-injects.mjs", true],
+  ["test-system-prompt-formats.mjs", true],
   ["test-sysprompt-db-error.mjs", true],
   ["test-sysprompt-presets.mjs", false],
   ["test-extract-api-key.mjs", true],
